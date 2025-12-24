@@ -40,6 +40,10 @@ async def lifespan(app: FastAPI):
     
     logger.info("Yoto Up Server starting...")
     
+    # Log debug mode status
+    if container.debug_enabled():
+        logger.info(f"Debug mode enabled. Output directory: {container.debug_dir()}")
+    
     # Ensure static directory exists
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     (STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)

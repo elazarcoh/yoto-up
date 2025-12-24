@@ -147,8 +147,7 @@ class ChapterItem(Component):
             # Tracks (collapsible)
             d.Div(
                 id=f"tracks-container-{self.index}",
-                classes=f"bg-gray-50",
-                style="display: block;" if has_tracks else "display: none;"
+                classes=f"bg-gray-50" + (" hidden" if not has_tracks else "")
             )(
                 d.Ul(classes="divide-y divide-gray-200")(
                     *track_items

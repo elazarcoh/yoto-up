@@ -4,6 +4,8 @@ Dependency Injection Container using dependency-injector.
 This module sets up the DI container for managing service dependencies.
 """
 
+import os
+from pathlib import Path
 from dependency_injector import containers, providers
 
 from yoto_up_server.services.api_service import ApiService
@@ -29,6 +31,15 @@ class Container(containers.DeclarativeContainer):
 
     # Configuration
     config = providers.Configuration()
+    
+    # Debug configuration
+    debug_enabled = providers.Singleton(
+        lambda: os.getenv("YOTO_UP_DEBUG", "").lower() == "true"
+    )
+    
+    debug_dir = providers.Singleton(
+        lambda: Path(os.getenv("YOTO_UP_DEBUG_DIR", "./debug"))
+    )
 
     # Services - Singletons
     api_service = providers.Singleton(ApiService)
@@ -37,6 +48,8 @@ class Container(containers.DeclarativeContainer):
         AudioProcessorService,
         target_level=config.audio.target_level.as_float(),
         true_peak=config.audio.true_peak.as_float(),
+        debug_enabled=debug_enabled,
+        debug_dir=debug_dir,
     )
 
     icon_service = providers.Singleton(

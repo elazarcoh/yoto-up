@@ -7,7 +7,7 @@ Wraps the AudioNormalizer and provides audio processing capabilities.
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Union
 
 from loguru import logger
 
@@ -25,11 +25,20 @@ class AudioProcessorService:
         self,
         target_level: float = -23.0,
         true_peak: float = -1.0,
+        debug_enabled: bool = False,
+        debug_dir: Optional[Union[str, Path]] = None,
     ) -> None:
         self.target_level = target_level
         self.true_peak = true_peak
+        self.debug_enabled = debug_enabled
+        self.debug_dir = Path(debug_dir) if debug_dir else Path("./debug")
         self._temp_dir = Path(tempfile.gettempdir()) / "yoto_up_audio"
         self._temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Ensure debug directory exists if debug is enabled
+        if self.debug_enabled:
+            (self.debug_dir / "normalization").mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Debug mode enabled. Output directory: {self.debug_dir / 'normalization'}")
     
     def normalize(
         self,
@@ -54,9 +63,18 @@ class AudioProcessorService:
             return []
         
         if output_dir is None:
-            output_dir = str(self._temp_dir / "normalized")
+            # Use debug directory if debug mode is enabled, otherwise use temp directory
+            if self.debug_enabled:
+                output_dir = str(self.debug_dir / "normalization")
+            else:
+                output_dir = str(self._temp_dir / "normalized")
         
         os.makedirs(output_dir, exist_ok=True)
+        
+        if self.debug_enabled:
+            logger.debug(f"Normalizing audio files in debug mode")
+            logger.debug(f"Input files: {input_paths}")
+            logger.debug(f"Output directory: {output_dir}")
         
         normalizer = AudioNormalizer(
             target_level=self.target_level,
@@ -65,13 +83,20 @@ class AudioProcessorService:
         )
         
         try:
-            return normalizer.normalize(
+            result = normalizer.normalize(
                 input_paths=input_paths,
                 output_dir=output_dir,
                 progress_callback=progress_callback,
             )
+            
+            if self.debug_enabled:
+                logger.debug(f"Normalization complete. Output files: {result}")
+            
+            return result
         except Exception as e:
             logger.error(f"Normalization failed: {e}")
+            if self.debug_enabled:
+                logger.debug(f"Debug mode is enabled. Output directory: {output_dir}")
             raise
     
     def trim_silence(

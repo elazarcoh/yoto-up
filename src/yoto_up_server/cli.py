@@ -36,6 +36,7 @@ def main(
     reload: bool = typer.Option(True, help="Enable auto-reload on code changes"),
     no_browser: bool = typer.Option(False, help="Don't automatically open browser"),
     log_level: str = typer.Option("info", help="Logging level"),
+    debug: bool = typer.Option(False, help="Enable debug mode (debug logging + debug output directory)"),
 ):
     """Start the Yoto Up Server."""
     
@@ -47,13 +48,22 @@ def main(
     
     logger.info(f"Starting Yoto Up Server at {url}")
     
+    if debug:
+        logger.info("Debug mode enabled")
+    
+    # Run the server with debug mode in environment
+    import os
+    if debug:
+        os.environ["YOTO_UP_DEBUG"] = "true"
+        os.environ["YOTO_UP_DEBUG_DIR"] = "./debug"
+    
     # Run the server
     uvicorn.run(
         "yoto_up_server.main:app",
         host=host,
         port=port,
         reload=reload,
-        log_level=log_level,
+        log_level=log_level if log_level != "info" or debug else ("debug" if debug else log_level),
     )
 
 

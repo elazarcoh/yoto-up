@@ -26,6 +26,15 @@ from yoto_up_server.templates.playlists import (
     PlaylistListPartial,
     PlaylistsPage,
 )
+from yoto_up_server.templates.playlist_detail_refactored import (
+    PlaylistDetailRefactored,
+    EditControlsPartial,
+)
+from yoto_up_server.templates.upload_components import (
+    UploadModalPartial,
+    JsonDisplayModalPartial,
+)
+from yoto_up_server.templates.icon_components import IconSidebarPartial
 
 router = APIRouter()
 
@@ -138,12 +147,12 @@ async def get_playlist_detail(
 
         if is_htmx_request:
             # Return just the partial for HTMX swaps
-            return render_partial(PlaylistDetailPartial(card=card))
+            return render_partial(PlaylistDetailRefactored(card=card))
         else:
             # Return full page for direct navigation
             return render_page(
                 title=f"{card.title or 'Playlist'} - Yoto Up",
-                content=PlaylistDetailPartial(card=card),
+                content=PlaylistDetailRefactored(card=card),
                 request=request,
             )
 
@@ -836,6 +845,103 @@ async def get_playlist_upload_sessions(
         raise
     except Exception as e:
         logger.error(f"Failed to get playlist upload sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{card_id}/toggle-edit-mode", response_class=HTMLResponse)
+async def toggle_edit_mode(
+    request: Request,
+    card_id: str,
+    api_service: AuthenticatedApiDep,
+    enable: bool = Query(True, description="Enable or disable edit mode"),
+) -> str:
+    """
+    Toggle edit mode for a playlist.
+    
+    Returns edit controls partial for HTMX swap.
+    """
+    try:
+        return render_partial(
+            EditControlsPartial(playlist_id=card_id, edit_mode_active=enable)
+        )
+    except Exception as e:
+        logger.error(f"Failed to toggle edit mode: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{card_id}/upload-modal", response_class=HTMLResponse)
+async def get_upload_modal(
+    request: Request,
+    card_id: str,
+    api_service: AuthenticatedApiDep,
+) -> str:
+    """
+    Get upload modal HTML.
+    
+    Returns upload modal partial for HTMX.
+    """
+    try:
+        return render_partial(UploadModalPartial(playlist_id=card_id))
+    except Exception as e:
+        logger.error(f"Failed to get upload modal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{card_id}/json-modal", response_class=HTMLResponse)
+async def get_json_modal(
+    request: Request,
+    card_id: str,
+    api_service: AuthenticatedApiDep,
+) -> str:
+    """
+    Get JSON display modal with playlist data.
+    
+    Returns JSON modal partial for HTMX.
+    """
+    try:
+        api = api_service.get_api()
+        if not api:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        card: Optional[Card] = api.get_card(card_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Card not found")
+
+        import json
+        card_data = card.model_dump(mode='json')
+        json_string = json.dumps(card_data, indent=2)
+        
+        return render_partial(JsonDisplayModalPartial(json_data=json_string))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get JSON modal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{card_id}/icon-sidebar", response_class=HTMLResponse)
+async def get_icon_sidebar(
+    request: Request,
+    card_id: str,
+    api_service: AuthenticatedApiDep,
+    chapter_index: Optional[int] = Query(None, description="Chapter index for single edit"),
+    batch: bool = Query(False, description="Batch mode for multiple chapters"),
+) -> str:
+    """
+    Get icon selection sidebar.
+    
+    Returns icon sidebar partial for HTMX.
+    """
+    try:
+        return render_partial(
+            IconSidebarPartial(
+                playlist_id=card_id,
+                chapter_index=chapter_index,
+                batch_mode=batch,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to get icon sidebar: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

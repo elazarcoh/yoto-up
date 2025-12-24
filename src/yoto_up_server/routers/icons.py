@@ -17,9 +17,10 @@ from yoto_up_server.models import Icon, IconSource, IconSearchRequest, IconSearc
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.icons import (
     IconsPage,
-    IconGridPartial,
+    IconGridPartial as IconGridComponent,
     IconDetailPartial,
 )
+from yoto_up_server.templates.icon_components import IconGridPartial as IconGridHtmx
 
 
 router = APIRouter()
@@ -119,6 +120,99 @@ async def online_search_icons(
         
     except Exception as e:
         logger.error(f"Failed to search icons online: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/grid", response_class=HTMLResponse)
+async def get_icon_grid(
+    request: Request,
+    api_service: AuthenticatedApiDep,
+    query: Optional[str] = Query(None, description="Search query"),
+    source: Optional[str] = Query(None, description="Filter by source: yoto, yotoicons, user"),
+    include_yotoicons: bool = Query(True, description="Include YotoIcons in results"),
+    limit: int = Query(50, ge=1, le=200, description="Maximum number of icons to return"),
+) -> str:
+    """
+    Get icon grid as HTML.
+    
+    Used by HTMX to populate icon sidebars and grids.
+    Returns HTML partial with icon grid.
+    """
+    try:
+        api = api_service.get_api()
+        if not api:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        
+        icons = []
+        
+        # Search icons based on query
+        if query:
+            search_results = api.search_cached_icons(
+                query=query,
+                fields=["title", "publicTags", "category", "tags", "id", "mediaId"],
+                show_in_console=False,
+                include_yotoicons=include_yotoicons,
+            )
+            icons = search_results[:limit]
+        else:
+            # No query: return icons from specified source
+            if source and source.lower() == "user":
+                user_icons = api.get_user_icons(show_in_console=False, refresh_cache=False)
+                icons = user_icons[:limit] if user_icons else []
+            elif source and source.lower() == "yotoicons":
+                if include_yotoicons:
+                    yotoicons = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                    icons = yotoicons[:limit] if yotoicons else []
+            else:
+                # Default: official Yoto icons
+                official = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                icons = official[:limit] if official else []
+        
+        # Build icon objects with thumbnail URLs
+        icon_objects = []
+        for icon in icons:
+            icon_obj = {
+                "id": icon.get("id") or icon.get("displayIconId") or icon.get("mediaId", "unknown"),
+                "mediaId": icon.get("mediaId") or icon.get("id"),
+                "title": icon.get("title") or icon.get("id") or "Untitled",
+            }
+            
+            # Get thumbnail
+            if icon.get("mediaId"):
+                icon_field = f"yoto:#{icon.get('mediaId')}"
+                b64_data = api.get_icon_b64_data(icon_field)
+                if b64_data:
+                    icon_obj["thumbnail"] = f"data:image/png;base64,{b64_data}"
+            
+            if "thumbnail" not in icon_obj and (icon.get("cache_path") or icon.get("cachePath")):
+                from pathlib import Path
+                import base64
+                cache_path = Path(icon.get("cache_path") or icon.get("cachePath"))
+                if cache_path.exists():
+                    try:
+                        img_bytes = cache_path.read_bytes()
+                        b64_data = base64.b64encode(img_bytes).decode()
+                        icon_obj["thumbnail"] = f"data:image/png;base64,{b64_data}"
+                    except Exception:
+                        pass
+            
+            if "thumbnail" not in icon_obj and (icon.get("url") or icon.get("img_url")):
+                icon_obj["thumbnail"] = icon.get("url") or icon.get("img_url")
+            
+            icon_objects.append(icon_obj)
+        
+        from yoto_up_server.templates.icon_components import IconGridPartial
+        return render_partial(
+            IconGridHtmx(
+                icons=icon_objects,
+                title=f"Icons ({len(icon_objects)})" if not query else f"Search Results ({len(icon_objects)})",
+            )
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get icon grid: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
