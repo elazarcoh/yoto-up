@@ -598,7 +598,7 @@ class YotoAPI:
             find_extra_fields(Card, data, warn_extra=True)
         return Card.model_validate(data)
 
-    def create_or_update_content(self, card, return_card=False, add_update_at=True, create_version:bool=True):
+    def create_or_update_content(self, card: Card, return_card=False, add_update_at=True, create_version:bool=True):
         """
         Accepts a Card model instance and sends it to the API.
 

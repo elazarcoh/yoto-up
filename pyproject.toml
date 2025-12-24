@@ -64,6 +64,19 @@ gui = [
   "pyloudnorm>=0.1",
 ]
 
+server = [
+  "fastapi>=0.95.0",
+  "uvicorn[standard]>=0.22.0",
+  "httpx>=0.24.0",
+  "pydom>=0.3.6",
+  "jinja2>=3.1.0",
+  "python-multipart>=0.0.5",
+  "dependency-injector>=4.40.0",
+  "typer>=0.19.0",
+  "pydantic-settings>=2.12.0",
+  "itsdangerous>=2.1.0",
+]
+
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and
 # heavy scientific packages which are not compatible with the browser runtime.
 web = [
@@ -92,3 +105,4 @@ include = ["yoto_up*"]
 [project.scripts]
 yoto = "yoto_up.yoto:app"
 gui = "yoto_up.gui:start_gui"
+server = "yoto_up_server.cli:app"

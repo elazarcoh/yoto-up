@@ -1,0 +1,268 @@
+"""
+Pydantic models for the Yoto Up Server.
+
+Defines data structures for API requests/responses, templates, and internal services.
+"""
+
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from enum import Enum
+from pydantic import BaseModel, Field
+
+
+# Upload Models
+
+class UploadStatus(str, Enum):
+    """Upload job status."""
+    PENDING = "pending"
+    QUEUED = "queued"
+    UPLOADING = "uploading"
+    PROCESSING = "processing"
+    DONE = "done"
+    ERROR = "error"
+
+
+class UploadJob(BaseModel):
+    """Represents an upload job."""
+    id: str
+    filename: str
+    status: UploadStatus = UploadStatus.QUEUED
+    progress: float = Field(default=0.0, ge=0.0, le=100.0)
+    error: Optional[str] = None
+    temp_path: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class UploadFileStatus(BaseModel):
+    """Status of a single file in an upload session."""
+    file_id: str
+    filename: str
+    size_bytes: int
+    status: UploadStatus = UploadStatus.PENDING
+    progress: float = Field(default=0.0, ge=0.0, le=100.0)
+    error: Optional[str] = None
+    temp_path: Optional[str] = None
+    uploaded_at: Optional[datetime] = None
+    processing_info: Dict[str, Any] = Field(default_factory=dict)  # normalization, analysis, etc.
+
+
+class UploadSession(BaseModel):
+    """Represents an upload session with multiple files."""
+    session_id: str
+    playlist_id: str
+    user_id: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    # Upload configuration
+    upload_mode: str = "chapters"  # chapters or tracks
+    normalize: bool = False
+    target_lufs: float = -23.0
+    normalize_batch: bool = False
+    analyze_intro_outro: bool = False
+    segment_seconds: float = 10.0
+    similarity_threshold: float = 0.75
+    show_waveform: bool = False
+    
+    # Session status
+    files: List[UploadFileStatus] = Field(default_factory=list)
+    overall_status: UploadStatus = UploadStatus.PENDING
+    overall_progress: float = Field(default=0.0, ge=0.0, le=100.0)
+    error_message: Optional[str] = None
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+
+class FileUploadResponse(BaseModel):
+    """Response after file upload."""
+    job_id: str
+    filename: str
+    status: UploadStatus
+    message: Optional[str] = None
+
+
+class UploadSessionInitRequest(BaseModel):
+    """Request to initialize an upload session."""
+    playlist_id: str
+    upload_mode: str = "chapters"
+    normalize: bool = False
+    target_lufs: Optional[float] = -23.0
+    normalize_batch: bool = False
+    analyze_intro_outro: bool = False
+    segment_seconds: Optional[float] = 10.0
+    similarity_threshold: Optional[float] = 0.75
+    show_waveform: bool = False
+
+
+class UploadSessionResponse(BaseModel):
+    """Response with upload session info."""
+    session_id: str
+    playlist_id: str
+    message: str
+    session: UploadSession
+
+
+# Icon Models
+
+class IconSource(str, Enum):
+    """Icon source type."""
+    OFFICIAL = "official"
+    YOTOICONS = "yotoicons"
+    LOCAL = "local"
+
+
+class IconMetadata(BaseModel):
+    """Metadata about an icon."""
+    source: IconSource
+    category: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    color: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class Icon(BaseModel):
+    """Icon data model."""
+    id: str
+    name: str
+    data: str  # Base64 encoded image data or URL
+    metadata: IconMetadata
+    score: float = Field(default=1.0, ge=0.0, le=1.0)  # Relevance/match score
+    
+    class Config:
+        json_encoders = {
+            IconSource: lambda v: v.value
+        }
+
+
+class IconSearchRequest(BaseModel):
+    """Request for icon search."""
+    query: Optional[str] = None
+    source: Optional[IconSource] = None
+    fuzzy: bool = False
+    threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+
+
+class IconSearchResponse(BaseModel):
+    """Response from icon search."""
+    query: Optional[str] = None
+    source: Optional[IconSource] = None
+    icons: List[Icon]
+    total: int
+
+
+# Playlist/Card Models
+
+class CardMetadata(BaseModel):
+    """Metadata for a card."""
+    category: Optional[str] = None
+    genre: Optional[List[str]] = None
+    author: Optional[str] = None
+    description: Optional[str] = None
+    cover: Optional[Dict[str, str]] = None
+    imageL: Optional[str] = None
+    imageM: Optional[str] = None
+    imageS: Optional[str] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        extra = "allow"  # Allow additional metadata fields
+
+
+class PlaylistCard(BaseModel):
+    """A card (playlist item) from the Yoto API."""
+    cardId: str
+    title: str
+    metadata: Optional[CardMetadata] = None
+    tags: Optional[List[str]] = None
+    slug: Optional[str] = None
+    createdAt: Optional[datetime] = None
+    extra: Dict[str, Any] = Field(default_factory=dict)
+    
+    class Config:
+        extra = "allow"
+        json_encoders = {
+            datetime: lambda v: v.isoformat() if v else None
+        }
+
+
+class CardFilterRequest(BaseModel):
+    """Request to filter cards."""
+    title_filter: Optional[str] = None
+    category: Optional[str] = None
+    genre: Optional[str] = None  # Comma-separated
+
+
+class CardListResponse(BaseModel):
+    """Response with list of cards."""
+    cards: List[PlaylistCard]
+    total: int
+    filters: Optional[CardFilterRequest] = None
+
+
+# Authentication Models
+
+class TokenInfo(BaseModel):
+    """OAuth token information."""
+    access_token: str
+    token_type: str = "Bearer"
+    expires_in: Optional[int] = None
+    refresh_token: Optional[str] = None
+    id_token: Optional[str] = None
+
+
+class OAuthCallbackRequest(BaseModel):
+    """OAuth callback request data."""
+    code: str
+    state: str
+    error: Optional[str] = None
+    error_description: Optional[str] = None
+
+
+# UI Models
+
+class PageContent(BaseModel):
+    """Generic page content wrapper."""
+    title: str
+    content: str  # HTML content
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PartialContent(BaseModel):
+    """Generic partial content wrapper."""
+    content: str  # HTML content
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+# Response Models
+
+class ErrorResponse(BaseModel):
+    """Standard error response."""
+    error: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+
+class SuccessResponse(BaseModel):
+    """Standard success response."""
+    success: bool = True
+    message: str
+    data: Optional[Dict[str, Any]] = None
+
+
+# API Service Models
+
+class AuthStatus(BaseModel):
+    """Current authentication status."""
+    authenticated: bool
+    user_id: Optional[str] = None
+    login_url: Optional[str] = None
