@@ -8,8 +8,10 @@ from typing import Optional, Union
 
 from fastapi import Request
 from pydom import Component, render
+from pydom.types import Renderable
 from pydom import html as d
 
+from yoto_up_server.container import Container
 from yoto_up_server.utils.setup_htmx import HTMX, HtmxExtensions
 
 
@@ -23,7 +25,7 @@ class BaseLayout(Component):
     def __init__(
         self,
         title: str = "Yoto Up",
-        content: Optional[Component] = None,
+        content: Optional[Renderable] = None,
         is_authenticated: bool = False,
     ) -> None:
         self.title = title
@@ -41,35 +43,34 @@ class BaseLayout(Component):
                 # HTMX
                 htmx.script(),
                 HtmxExtensions.sse.script(),
-                HtmxExtensions.loading_states.script(),
                 # Alpine.js for simple interactivity
                 d.Script(src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True),
                 # App JavaScript
                 d.Script(src="/static/js/app.js", defer=True),
                 # Custom styles
                 d.Style()("""
-                    input[type="checkbox"]:not(.hidden) {
-                        display: block !important;
-                    }
-                    input[type="checkbox"].hidden {
-                        display: none !important;
-                    }
-                    .group-hover\\/icon:hover > button {
-                        opacity: 1;
-                    }
-                    #edit-overlay.hidden {
-                        pointer-events: none !important;
-                        display: none !important;
-                    }
-                    #edit-overlay:not(.hidden) {
-                        pointer-events: auto !important;
-                        display: block !important;
-                    }
-                    .group\\/icon button {
-                        pointer-events: none;
-                    }
-                    .group\\/icon:hover button {
-                        pointer-events: auto;
+                    @layer utilities {
+                        input[type="checkbox"]:not(.hidden) {
+                            @apply block !important;
+                        }
+                        input[type="checkbox"].hidden {
+                            @apply hidden !important;
+                        }
+                        .group-hover\\/icon:hover > button {
+                            @apply opacity-100;
+                        }
+                        #edit-overlay.hidden {
+                            @apply pointer-events-none !important hidden !important;
+                        }
+                        #edit-overlay:not(.hidden) {
+                            @apply pointer-events-auto !important block !important;
+                        }
+                        .group\\/icon button {
+                            @apply pointer-events-none;
+                        }
+                        .group\\/icon:hover button {
+                            @apply pointer-events-auto;
+                        }
                     }
                 """),
             ),
@@ -113,9 +114,9 @@ class Navigation(Component):
         if self.is_authenticated:
             nav_items.extend([
                 ("Playlists", "/playlists/"),
-                ("Upload", "/upload/"),
-                ("Icons", "/icons/"),
-                ("Cards", "/cards/"),
+                # ("Upload", "/upload/"),
+                # ("Icons", "/icons/"),
+                # ("Cards", "/cards/"),
             ])
         
         return d.Nav(classes="bg-white shadow")(
@@ -283,7 +284,7 @@ def render_page(
     # Check auth status if not provided
     if is_authenticated is None:
         try:
-            container = request.app.state.container
+            container: Container = request.app.state.container
             api_service = container.api_service()
             is_authenticated = api_service.is_authenticated()
         except Exception:

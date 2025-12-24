@@ -58,7 +58,7 @@ class PlaylistDetailRefactored(Component):
             ToastNotificationSystem(),
             
             # Event listener for HTMX edit mode toggle
-            d.Script()("""
+            d.Script()("""//js
             // Listen for HTMX after-settle events on the edit controls container
             document.addEventListener('htmx:afterSettle', function(event) {
                 if(event.detail.target.id === 'edit-controls-container') {
@@ -72,7 +72,7 @@ class PlaylistDetailRefactored(Component):
                     }
                 }
             });
-            """)
+            """),
             
             # Header
             d.Div(classes="mb-6")(

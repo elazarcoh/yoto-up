@@ -156,14 +156,13 @@ async def start_upload(
     
     # Start background upload task
     upload_manager = container.upload_manager()
-    api = api_service.get_api()
     
     background_tasks.add_task(
         process_uploads,
         session_id=session_id,
         queue=queue,
         upload_manager=upload_manager,
-        api=api,
+        api_service=api_service,
         target=target,
         title=title,
         mode=mode,
@@ -177,7 +176,7 @@ async def process_uploads(
     session_id: str,
     queue: List[UploadJob],
     upload_manager,
-    api,
+    api_service,
     target: str,
     title: Optional[str],
     mode: str,
@@ -187,7 +186,7 @@ async def process_uploads(
     try:
         await upload_manager.process_queue(
             queue=queue,
-            api=api,
+            api_service=api_service,
             target=target,
             title=title,
             mode=mode,

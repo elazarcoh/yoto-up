@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request, encoders
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from loguru import logger
-from pydom import render
+from pydom import render, html as d
 from pydom.element import Element
 from pydom.component import Component
 
@@ -21,6 +21,7 @@ from yoto_up_server.container import Container
 from yoto_up_server.routers import auth, cards, icons, playlists, upload
 from yoto_up_server.templates.base import render_page
 from yoto_up_server.templates.home import HomePage
+from yoto_up_server.dependencies import AuthenticationError
 
 
 # Application root directory
@@ -33,25 +34,27 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown."""
     # Initialize the DI container
     container = Container()
+    container.wire(modules=["yoto_up_server.dependencies"])
     app.state.container = container
-    
+
     # In-memory OAuth state storage (for CSRF protection)
     app.state.oauth_states = {}
-    
+
     logger.info("Yoto Up Server starting...")
-    
+
     # Log debug mode status
     if container.debug_enabled():
         logger.info(f"Debug mode enabled. Output directory: {container.debug_dir()}")
-    
+
     # Ensure static directory exists
     STATIC_DIR.mkdir(parents=True, exist_ok=True)
     (STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)
     (STATIC_DIR / "css").mkdir(parents=True, exist_ok=True)
-    
+
     yield
-    
+
     logger.info("Yoto Up Server shutting down...")
+
 
 encoders.encoders_by_class_tuples[render] = (Element, Component)
 app = FastAPI(
@@ -60,6 +63,50 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+
+@app.exception_handler(AuthenticationError)
+async def authentication_error_handler(
+    request: Request, exc: AuthenticationError
+) -> HTMLResponse:
+    """
+    Handle authentication errors by showing a session-expired modal
+    and redirecting to the login page.
+    """
+    
+    html_response = (
+        d.Div(classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]")(
+            d.Div(
+                classes="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center",
+            )(
+                d.H2(classes="text-xl font-bold text-gray-900 m-0 mb-4")(
+                    "Session Expired"
+                ),
+                d.P(classes="text-gray-600 m-0 mb-6 leading-relaxed")(
+                    "Your authentication session has expired. Please log in again."
+                ),
+                d.A(
+                    href="/auth",
+                    classes="inline-block px-6 py-2.5 bg-indigo-600 text-white rounded-md font-medium cursor-pointer no-underline transition-colors duration-200 hover:bg-indigo-700",
+                )("Go to Login"),
+            ),
+            d.Script()("""//js
+                // Auto-redirect to login page after 3 seconds
+                setTimeout(() => {
+                    window.location.href = '/auth';
+                }, 3000);
+            """),
+        ),
+    )
+    return HTMLResponse(
+        content=render_page(
+            title="Session Expired",
+            content=html_response,
+            request=request,
+        ),
+        status_code=401,
+    )
+
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -77,9 +124,9 @@ async def home(request: Request) -> str:
     """Render the home page."""
     container: Container = request.app.state.container
     api_service = container.api_service()
-    
+
     is_authenticated = api_service.is_authenticated()
-    
+
     return render_page(
         title="Yoto Up",
         content=HomePage(is_authenticated=is_authenticated),
@@ -95,4 +142,5 @@ async def health_check() -> dict[str, str]:
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

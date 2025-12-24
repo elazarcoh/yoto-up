@@ -102,13 +102,9 @@ async def online_search_icons(
     Returns HTML partial with icon grid.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         icon_service = container.icon_service()
         
-        icons = icon_service.search_online(query=query, api=api)
+        icons = await api_service.search_online(query=query)
         
         return render_partial(
             IconGridPartial(
@@ -139,15 +135,11 @@ async def get_icon_grid(
     Returns HTML partial with icon grid.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         icons = []
         
         # Search icons based on query
         if query:
-            search_results = api.search_cached_icons(
+            search_results = await api_service.search_cached_icons(
                 query=query,
                 fields=["title", "publicTags", "category", "tags", "id", "mediaId"],
                 show_in_console=False,
@@ -157,15 +149,15 @@ async def get_icon_grid(
         else:
             # No query: return icons from specified source
             if source and source.lower() == "user":
-                user_icons = api.get_user_icons(show_in_console=False, refresh_cache=False)
+                user_icons = await api_service.get_user_icons(show_in_console=False, refresh_cache=False)
                 icons = user_icons[:limit] if user_icons else []
             elif source and source.lower() == "yotoicons":
                 if include_yotoicons:
-                    yotoicons = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                    yotoicons = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
                     icons = yotoicons[:limit] if yotoicons else []
             else:
                 # Default: official Yoto icons
-                official = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                official = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
                 icons = official[:limit] if official else []
         
         # Build icon objects with thumbnail URLs
@@ -180,7 +172,7 @@ async def get_icon_grid(
             # Get thumbnail
             if icon.get("mediaId"):
                 icon_field = f"yoto:#{icon.get('mediaId')}"
-                b64_data = api.get_icon_b64_data(icon_field)
+                b64_data = await api_service.get_icon_b64_data(icon_field)
                 if b64_data:
                     icon_obj["thumbnail"] = f"data:image/png;base64,{b64_data}"
             
@@ -245,16 +237,12 @@ async def list_icons(
       - tags: List of tags (if available)
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         icons = []
         
         # Search icons based on query
         if query:
             # Use API's search_cached_icons method which searches all sources
-            search_results = api.search_cached_icons(
+            search_results = await api_service.search_cached_icons(
                 query=query,
                 fields=["title", "publicTags", "category", "tags", "id"],
                 show_in_console=False,
@@ -265,16 +253,16 @@ async def list_icons(
             # No query: return all cached icons from specified source
             if source and source.lower() == "user":
                 # Get user icons
-                user_icons = api.get_user_icons(show_in_console=False, refresh_cache=False)
+                user_icons = await api_service.get_user_icons(show_in_console=False, refresh_cache=False)
                 icons = user_icons[:limit] if user_icons else []
             elif source and source.lower() == "yotoicons":
                 # Get YotoIcons
                 if include_yotoicons:
-                    yotoicons = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                    yotoicons = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
                     icons = yotoicons[:limit] if yotoicons else []
             else:
                 # Get all from Yoto (official)
-                official = api.get_public_icons(show_in_console=False, refresh_cache=False)
+                official = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
                 icons = official[:limit] if official else []
         
         # Build response with base64 thumbnails
@@ -292,7 +280,7 @@ async def list_icons(
             # First try mediaId (for official Yoto icons)
             if icon.get("mediaId"):
                 icon_field = f"yoto:#{icon.get('mediaId')}"
-                b64_data = api.get_icon_b64_data(icon_field)
+                b64_data = await api_service.get_icon_b64_data(icon_field)
                 if b64_data:
                     icon_data["thumbnail"] = f"data:image/png;base64,{b64_data}"
                     icon_data["source"] = "yoto"
@@ -387,16 +375,12 @@ async def get_icon_image(
     Returns base64 data URI as JSON.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         # Try to get icon as base64 from API's icon cache
         # The icon_id is the mediaId, so construct the full icon field
         icon_field = f"yoto:#{icon_id}"
         
         logger.debug(f"Getting icon base64 for field: {icon_field}")
-        b64_data = api.get_icon_b64_data(icon_field)
+        b64_data = await api_service.get_icon_b64_data(icon_field)
         
         if not b64_data:
             logger.error(f"Failed to get base64 data for icon {icon_id}")
@@ -429,19 +413,15 @@ async def upload_icon(
     Returns HTML partial with the uploaded icon.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         icon_service = container.icon_service()
         
         # Read and process the uploaded file
         content = await file.read()
         
-        icon = icon_service.upload_icon(
+        icon = await icon_service.upload_icon(
             content=content,
             filename=file.filename,
-            api=api,
+            api_service=api_service,
         )
         
         return render_partial(IconDetailPartial(icon=icon))
@@ -464,10 +444,6 @@ async def create_icon_from_pixels(
     Returns HTML partial with the created icon.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         icon_service = container.icon_service()
         
         body = await request.json()
@@ -477,10 +453,10 @@ async def create_icon_from_pixels(
         if not pixels or len(pixels) != 16 or any(len(row) != 16 for row in pixels):
             raise HTTPException(status_code=400, detail="Invalid pixel data: must be 16x16 array")
         
-        icon = icon_service.create_from_pixels(
+        icon = await icon_service.create_from_pixels(
             pixels=pixels,
             name=name,
-            api=api,
+            api_service=api_service,
         )
         
         return render_partial(IconDetailPartial(icon=icon))

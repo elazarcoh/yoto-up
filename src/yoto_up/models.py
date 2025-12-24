@@ -29,7 +29,7 @@ class Track(BaseModel):
     title: str
     trackUrl: str
     key: str
-    format: str
+    format: str | None = None
     uid: Optional[str] = None
     type: Literal["audio", "stream"]
     display: Optional[TrackDisplay] = None

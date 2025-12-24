@@ -48,12 +48,8 @@ async def list_cards(
     Returns HTML partial for HTMX updates.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         # Fetch all cards from the API
-        cards = api.get_library()
+        cards = await api_service.get_library()
         
         # Apply filters
         if title_filter:
@@ -95,11 +91,7 @@ async def get_card_detail(
     Returns HTML partial with card information.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        card = api.get_card(card_id)
+        card = await api_service.get_card(card_id)
         
         if not card:
             raise HTTPException(status_code=404, detail="Card not found")
@@ -125,11 +117,7 @@ async def edit_card_form(
     Returns HTML partial with editable card form.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        card = api.get_card(card_id)
+        card = await api_service.get_card(card_id)
         
         if not card:
             raise HTTPException(status_code=404, detail="Card not found")
@@ -156,10 +144,6 @@ async def update_card(
     Returns updated card detail partial.
     """
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
         form_data = await request.form()
         
         # Build update payload from form data
@@ -180,7 +164,7 @@ async def update_card(
         
         # Update the card via API
         # Note: The actual API method may differ based on the yoto_api implementation
-        updated_card = api.update_card_metadata(card_id, update_data)
+        updated_card = await api_service.update_card_metadata(card_id, update_data)
         
         return render_partial(CardDetailPartial(card=updated_card))
         
@@ -199,11 +183,7 @@ async def delete_card(
 ):
     """Delete a card."""
     try:
-        api = api_service.get_api()
-        if not api:
-            raise HTTPException(status_code=401, detail="Not authenticated")
-        
-        api.delete_card(card_id)
+        await api_service.delete_card(card_id)
         
         return {"status": "deleted", "card_id": card_id}
         

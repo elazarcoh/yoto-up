@@ -157,10 +157,10 @@ class IconService:
         
         return query in name or query in tags or query in keywords
     
-    def search_online(
+    async def search_online(
         self,
         query: str,
-        api,
+        api_service: "ApiService",
         limit: int = 50,
     ) -> List[Dict[str, Any]]:
         """
@@ -168,7 +168,7 @@ class IconService:
         
         Args:
             query: Search query string.
-            api: YotoAPI instance.
+            api_service: ApiService instance.
             limit: Maximum results.
         
         Returns:
@@ -176,8 +176,8 @@ class IconService:
         """
         try:
             # Use the API's yotoicons search if available
-            if hasattr(api, "search_yotoicons"):
-                results = api.search_yotoicons(query, limit=limit)
+            if hasattr(api_service, "search_yotoicons"):
+                results = await api_service.search_yotoicons(query, limit=limit)
                 return results
             
             logger.warning("Online icon search not available in API")
@@ -199,11 +199,11 @@ class IconService:
             return icon.get("path")
         return None
     
-    def upload_icon(
+    async def upload_icon(
         self,
         content: bytes,
         filename: str,
-        api,
+        api_service: "ApiService",
     ) -> Dict[str, Any]:
         """
         Upload an icon image.
@@ -211,7 +211,7 @@ class IconService:
         Args:
             content: Image file content.
             filename: Original filename.
-            api: YotoAPI instance.
+            api_service: ApiService instance.
         
         Returns:
             Uploaded icon dictionary.
@@ -238,8 +238,8 @@ class IconService:
         
         # Upload to Yoto if API available
         try:
-            if hasattr(api, "upload_icon"):
-                result = api.upload_icon(local_path)
+            if hasattr(api_service, "upload_icon"):
+                result = await api_service.upload_icon(local_path)
                 logger.info(f"Icon uploaded to Yoto: {result}")
         except Exception as e:
             logger.error(f"Failed to upload icon to Yoto: {e}")
@@ -257,11 +257,11 @@ class IconService:
         
         return icon_data
     
-    def create_from_pixels(
+    async def create_from_pixels(
         self,
         pixels: List[List[str]],
         name: str,
-        api,
+        api_service: "ApiService",
     ) -> Dict[str, Any]:
         """
         Create an icon from pixel data.
@@ -269,7 +269,7 @@ class IconService:
         Args:
             pixels: 16x16 array of hex color strings.
             name: Icon name.
-            api: YotoAPI instance.
+            api_service: ApiService instance.
         
         Returns:
             Created icon dictionary.
@@ -297,8 +297,8 @@ class IconService:
         
         # Upload to Yoto if API available
         try:
-            if hasattr(api, "upload_icon"):
-                result = api.upload_icon(local_path)
+            if hasattr(api_service, "upload_icon"):
+                result = await api_service.upload_icon(local_path)
                 logger.info(f"Icon uploaded to Yoto: {result}")
         except Exception as e:
             logger.error(f"Failed to upload icon to Yoto: {e}")
@@ -316,26 +316,26 @@ class IconService:
         
         return icon_data
     
-    def refresh_cache(self, api=None):
+    async def refresh_cache(self, api_service: Optional["ApiService"] = None) -> None:
         """
         Refresh icon caches from API.
         
         Args:
-            api: Optional YotoAPI instance. Uses service's API if not provided.
+            api_service: Optional ApiService instance. Uses service's API if not provided.
         """
-        if api is None:
-            api = self._api_service.get_api()
+        if api_service is None:
+            api_service = self._api_service
         
-        if api is None:
+        if api_service is None:
             logger.warning("Cannot refresh icon cache: API not available")
             return
         
         try:
             # Refresh public icons
-            api.get_public_icons(show_in_console=False)
+            await api_service.get_public_icons(show_in_console=False)
             
             # Refresh user icons
-            api.get_user_icons(show_in_console=False)
+            await api_service.get_user_icons(show_in_console=False)
             
             # Rebuild index
             self._index_built = False

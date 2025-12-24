@@ -127,7 +127,7 @@ class IconGridPartial(Component):
                 "No icons found."
             )
         
-        return d.Div(style="display: contents")(
+        return d.Div(classes="contents")(
             *[IconTile(icon) for icon in self.icons]
         )
 

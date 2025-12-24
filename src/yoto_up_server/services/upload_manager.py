@@ -62,7 +62,7 @@ class UploadManager:
     async def process_queue(
         self,
         queue: List,  # List of UploadJob-like objects
-        api: object,
+        api_service: "ApiService",
         target: str,
         title: Optional[str] = None,
         mode: str = "chapters",
@@ -117,7 +117,7 @@ class UploadManager:
                     job.status = msg or "uploading"
                     job.progress = frac or 0.0
                 
-                result = await api.upload_and_transcode_audio_async(
+                result = await api_service.upload_and_transcode_audio_async(
                     audio_path=path,
                     filename=filename,
                     loudnorm=False,  # Already normalized if requested
@@ -139,10 +139,10 @@ class UploadManager:
                 transcoded_results.append(None)
         
         # Step 3: Build chapters/tracks from transcoded results
-        chapters = self._build_chapters(
+        chapters = await self._build_chapters(
             transcoded_results=transcoded_results,
             queue=queue,
-            api=api,
+            api_service=api_service,
             mode=mode,
         )
         
@@ -159,7 +159,7 @@ class UploadManager:
                 for job in queue:
                     job.status = "creating_card"
                 
-                card = api.create_card(
+                card = await api_service.create_card(
                     title=card_title,
                     chapters=chapters,
                 )
@@ -174,13 +174,13 @@ class UploadManager:
                     job.status = "updating_card"
                 
                 # Get existing card content
-                existing_card = api.get_card(card_id)
+                existing_card = await api_service.get_card(card_id)
                 existing_chapters = existing_card.get("content", {}).get("chapters", [])
                 
                 # Append new chapters
                 all_chapters = existing_chapters + chapters
                 
-                api.update_card_content(
+                await api_service.update_card_content(
                     card_id=card_id,
                     chapters=all_chapters,
                 )
@@ -200,11 +200,11 @@ class UploadManager:
                     job.status = "error"
                     job.error = str(e)
     
-    def _build_chapters(
+    async def _build_chapters(
         self,
         transcoded_results: List,
         queue: List,
-        api,
+        api_service: "ApiService",
         mode: str = "chapters",
     ) -> List[dict]:
         """
@@ -231,7 +231,7 @@ class UploadManager:
                 
                 title = self.clean_title_from_filename(job.filename)
                 
-                track = api.get_track_from_transcoded_audio(
+                track = await api_service.get_track_from_transcoded_audio(
                     result,
                     track_details={"title": title},
                 )
@@ -257,7 +257,7 @@ class UploadManager:
                 
                 title = self.clean_title_from_filename(job.filename)
                 
-                chapter = api.get_chapter_from_transcoded_audio(
+                chapter = await api_service.get_chapter_from_transcoded_audio(
                     result,
                     chapter_details={"title": title},
                 )

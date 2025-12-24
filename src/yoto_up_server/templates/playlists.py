@@ -20,10 +20,13 @@ class PlaylistsPage(Component):
         return d.Div()(
             d.Div(classes="flex justify-between items-center mb-6")(
                 d.H1(classes="text-2xl font-bold text-gray-900")("Playlists"),
-                d.A(
-                    href="/upload/",
-                    classes="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
-                )("Upload New")
+                d.Button(
+                    type="button",
+                    classes="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 cursor-pointer",
+                    hx_get="/playlists/modal/new",
+                    hx_target="body",
+                    hx_swap="beforeend"
+                )("✨ Create Playlist")
             ),
             # Filters
             d.Div(classes="bg-white p-6 rounded-lg shadow mb-8")(

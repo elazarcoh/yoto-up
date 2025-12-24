@@ -123,7 +123,7 @@ class HTMXLoadingStatesExtension(HTMXExtension):
         self.script = PartialScript(
             src="/static/js/loading-states.js"
         )
-        self.style = Style("[data-loading] { display: none; }")
+        self.style = Style("@layer utilities { [data-loading] { @apply hidden; } }")
 
     def render(self):
         yield from super().render()

@@ -16,6 +16,21 @@ from yoto_up_server.services.upload_session_service import UploadSessionService
 from yoto_up_server.services.upload_processing_service import UploadProcessingService
 
 
+def init_upload_processing_service(
+    api_service: ApiService,
+    audio_processor: AudioProcessorService,
+    upload_session_service: UploadSessionService,
+):
+    service = UploadProcessingService(
+        api_service=api_service,
+        audio_processor=audio_processor,
+        upload_session_service=upload_session_service,
+    )
+    service.start()
+    yield service
+    service.stop()
+
+
 class Container(containers.DeclarativeContainer):
     """Application DI container."""
 
@@ -46,8 +61,6 @@ class Container(containers.DeclarativeContainer):
     
     audio_processor = providers.Factory(
         AudioProcessorService,
-        target_level=config.audio.target_level.as_float(),
-        true_peak=config.audio.true_peak.as_float(),
         debug_enabled=debug_enabled,
         debug_dir=debug_dir,
     )
@@ -67,8 +80,8 @@ class Container(containers.DeclarativeContainer):
         UploadSessionService,
     )
 
-    upload_processing_service = providers.Singleton(
-        UploadProcessingService,
+    upload_processing_service = providers.Resource(
+        init_upload_processing_service,
         api_service=api_service,
         audio_processor=audio_processor,
         upload_session_service=upload_session_service,
