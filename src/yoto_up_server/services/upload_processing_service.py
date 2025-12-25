@@ -61,6 +61,9 @@ class UploadProcessingService:
         self._thread_pool = ThreadPoolExecutor(
             max_workers=4, thread_name_prefix="UploadWorker"
         )
+        # Track sessions that should be stopped
+        self._sessions_to_stop: set[str] = set()
+        self._stop_lock = threading.Lock()
 
     def start(self) -> None:
         """Start the worker thread."""
@@ -97,6 +100,35 @@ class UploadProcessingService:
         """
         self._queue.put((session_id, playlist_id))
         logger.info(f"Queued session {session_id} for processing")
+
+    def stop_session(self, session_id: str) -> bool:
+        """
+        Mark a session to be stopped.
+
+        Args:
+            session_id: ID of the session to stop
+
+        Returns:
+            True if session was marked for stopping
+        """
+        with self._stop_lock:
+            self._sessions_to_stop.add(session_id)
+        logger.info(f"Marked session {session_id} for stopping")
+        return True
+
+    def _is_session_stopped(self, session_id: str) -> bool:
+        """
+        Check if a session should be stopped.
+        """
+        with self._stop_lock:
+            return session_id in self._sessions_to_stop
+
+    def _clear_stop_flag(self, session_id: str) -> None:
+        """
+        Clear the stop flag for a session.
+        """
+        with self._stop_lock:
+            self._sessions_to_stop.discard(session_id)
 
     def _worker_loop(self) -> None:
         """Main worker loop processing sessions from the queue."""
@@ -232,14 +264,25 @@ class UploadProcessingService:
         Runs in thread pool.
         """
         try:
+            # Check if session should stop before processing this file
+            if self._is_session_stopped(session_id):
+                logger.info(f"Session {session_id} stopped, skipping file {file_status.filename}")
+                return None
+
             input_path = Path(file_status.temp_path)
 
             # 1. Normalization (Parallel mode)
             if session.normalize and not session.normalize_batch:
+                if self._is_session_stopped(session_id):
+                    logger.info(f"Session {session_id} stopped during normalization")
+                    return None
+
                 self._upload_session_service.mark_file_processing(
                     session_id, file_status.file_id, "normalizing"
                 )
                 logger.info(f"Normalizing file {input_path.name} (parallel mode)")
+                # SLEEP FOR TESTING - Remove later
+                time.sleep(5)
                 normalized_paths = self._audio_processor.normalize(
                     input_paths=[str(input_path)],
                     output_dir=str(input_path.parent),
@@ -252,18 +295,30 @@ class UploadProcessingService:
                     file_status.temp_path = str(input_path)
 
             # 2. Analyze (Intro/Outro)
+            if self._is_session_stopped(session_id):
+                logger.info(f"Session {session_id} stopped before analysis")
+                return None
+
             self._upload_session_service.mark_file_processing(
                 session_id, file_status.file_id, "analyzing"
             )
+            # SLEEP FOR TESTING - Remove later
+            time.sleep(3)
 
             # Placeholder for analysis
             # if session.analyze_intro_outro:
             #     pass
 
             # 3. Upload
+            if self._is_session_stopped(session_id):
+                logger.info(f"Session {session_id} stopped before upload")
+                return None
+
             self._upload_session_service.mark_file_processing(
                 session_id, file_status.file_id, "uploading_to_api"
             )
+            # SLEEP FOR TESTING - Remove later
+            time.sleep(5)
 
             transcoded = self._upload_file_to_yoto(input_path)
 

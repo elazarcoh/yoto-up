@@ -105,10 +105,31 @@ cards = await yoto_client.get_my_content()  # Gets current session, creates clie
 
 ### Environment Setup
 - **Python 3.13+** required
-- **For server dev**: use `uv` for virtual env management.
-- **Run server**: `uv run python src/yoto_up_server/cli.py --reload`
+- **For server dev**: use `uv` for virtual env management
 - **Key env vars**: `SESSION_ENCRYPTION_KEY` (required, Fernet key), `.env` file or export
 - **Debug mode**: `YOTO_UP_DEBUG=true` enables debug logging
+
+#### Running the Server
+
+**Use VS Code Tasks instead of terminal commands** - this prevents server interruption when editing files:
+
+1. **Open Tasks**: `Ctrl+Shift+D` → select "Start Yoto Server (with reload)" or use `Terminal > Run Task`
+2. **Available Tasks** in `.vscode/tasks.json`:
+   - **Start Yoto Server (with reload)** - Hot reload enabled, auto-restarts on code changes
+   - **Start Yoto Server (no reload)** - Stable run without auto-restart
+   - **Start Yoto Server (debug mode)** - With reload + debug output directory
+   - **Kill Yoto Server processes** - Force stop all Python processes
+
+**Why tasks?** The task runner maintains the server process independently from your editor, preventing accidental kills when you reload/restart VS Code.
+
+**Manual start** (if not using tasks):
+```bash
+# Set encryption key first
+$env:SESSION_ENCRYPTION_KEY = (python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+
+# Start server with reload
+uv run python src/yoto_up_server/cli.py --reload --no-browser
+```
 
 ### File Structure
 ```

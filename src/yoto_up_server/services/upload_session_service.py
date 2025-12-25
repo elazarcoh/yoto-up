@@ -295,12 +295,13 @@ class UploadSessionService:
         """
         return self._sessions.get(session_id)
 
-    def get_playlist_sessions(self, playlist_id: str) -> List[UploadSession]:
+    def get_playlist_sessions(self, playlist_id: str, include_done: bool = True) -> List[UploadSession]:
         """
-        Get all active sessions for a playlist.
+        Get all sessions for a playlist.
 
         Args:
             playlist_id: ID of the playlist
+            include_done: If True, include completed sessions. Default True.
 
         Returns:
             List of UploadSession objects
@@ -309,8 +310,10 @@ class UploadSessionService:
         sessions = []
         for session_id in session_ids:
             session = self._sessions.get(session_id)
-            if session and session.overall_status != UploadStatus.DONE:
-                sessions.append(session)
+            if session:
+                # Include done sessions by default, filter only if requested
+                if include_done or session.overall_status != UploadStatus.DONE:
+                    sessions.append(session)
         return sessions
 
     def delete_session(self, session_id: str) -> bool:

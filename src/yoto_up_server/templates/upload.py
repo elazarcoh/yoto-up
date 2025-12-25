@@ -2,7 +2,7 @@
 Upload templates.
 """
 
-from typing import List
+from typing import List, Dict, Any
 
 from pydom import Component
 from pydom import html as d
@@ -22,6 +22,9 @@ class UploadPage(Component):
             d.Div(classes="bg-white shadow sm:rounded-lg mb-8")(
                 d.Div(classes="px-4 py-5 sm:p-6")(
                     d.Form(
+                        method="POST",
+                        action="/upload/files",
+                        enctype="multipart/form-data",
                         hx_post="/upload/files",
                         hx_target="#upload-queue",
                         hx_encoding="multipart/form-data",
@@ -46,8 +49,8 @@ class UploadPage(Component):
                                             id="file-input",
                                             multiple=True,
                                             accept="audio/*",
-                                            classes="sr-only",
-                                            onchange="this.form.requestSubmit()"
+                                            classes="hidden",
+                                            onchange="this.closest('form').requestSubmit()"
                                         ),
                                     ),
                                     d.P(classes="pl-1")("or drag and drop"),
@@ -92,21 +95,16 @@ class UploadPage(Component):
                                 d.Select(
                                     name="target",
                                     id="upload-target",
-                                    classes="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                                    classes="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md",
+                                    hx_get="/upload/target-fields",
+                                    hx_target="#target-fields-container",
                                 )(
                                     d.Option(value="new")("Create New Card"),
                                     d.Option(value="existing")("Add to Existing Card"),
                                 ),
                             ),
-                            d.Div(classes="sm:col-span-3")(
-                                d.Label(html_for="card-title", classes="block text-sm font-medium text-gray-700")("Card Title"),
-                                d.Input(
-                                    type="text",
-                                    name="title",
-                                    id="card-title",
-                                    placeholder="Enter title for new card...",
-                                    classes="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md",
-                                ),
+                            d.Div(id="target-fields-container", classes="sm:col-span-3")(
+                                TargetFieldsPartial(target_type="new")
                             ),
                         ),
                         d.Div(classes="mt-6")(
@@ -211,3 +209,35 @@ class UploadProgressPartial(Component):
                 )
             )
         )
+
+
+class TargetFieldsPartial(Component):
+    """Partial for target fields (title input or card select)."""
+    
+    def __init__(self, target_type: str, cards: List[Dict[str, Any]] = None):
+        self.target_type = target_type
+        self.cards = cards or []
+        
+    def render(self):
+        if self.target_type == "existing":
+            return d.Div()(
+                d.Label(html_for="card-id", classes="block text-sm font-medium text-gray-700")("Select Card"),
+                d.Select(
+                    name="card_id",
+                    id="card-id",
+                    classes="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+                )(
+                    *[d.Option(value=c.get("cardId") or c.get("id"))(c.get("title", "Untitled")) for c in self.cards]
+                )
+            )
+        else:
+            return d.Div()(
+                d.Label(html_for="card-title", classes="block text-sm font-medium text-gray-700")("Card Title"),
+                d.Input(
+                    type="text",
+                    name="title",
+                    id="card-title",
+                    placeholder="Enter title for new card...",
+                    classes="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"
+                ),
+            )

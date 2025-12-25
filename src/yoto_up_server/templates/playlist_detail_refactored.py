@@ -86,14 +86,177 @@ class PlaylistDetailRefactored(Component):
                 # Header section
                 self._render_header(title, description, cover_url),
                 
-                # Active uploads section (initially hidden, populated by HTMX)
-                d.Div(
-                    id="uploading-section",
-                    classes="border-t border-gray-200 hidden",
-                    hx_get=f"/playlists/{self.card.cardId}/upload-sessions",
-                    hx_trigger="load",
-                    hx_swap="innerHTML",
-                )(),
+                # Active uploads section (displays upload progress for each file)
+                d.Div(id="active-uploads-container", classes="border-t border-gray-200 px-6 py-6 bg-gray-50")(
+                    d.H3(classes="text-lg font-semibold text-gray-900 mb-4")("⬆️ Active Uploads"),
+                    d.Div(id="uploads-list", classes="space-y-4"),
+                    
+                    # Script to manage active uploads
+                    d.Script()(r"""//js
+                    // Poll for active upload sessions
+                    async function pollActiveUploads() {
+                        try {
+                            const response = await fetch(`/playlists/""" + self.card.cardId + r"""/upload-sessions`);
+                            if (!response.ok) return;
+                            
+                            const data = await response.json();
+                            const uploadsList = document.getElementById('uploads-list');
+                            const container = document.getElementById('active-uploads-container');
+                            
+                            if (!data.sessions || data.sessions.length === 0) {
+                                container.classList.add('hidden');
+                                return;
+                            }
+                            
+                            container.classList.remove('hidden');
+                            
+                            // Update each session
+                            for (const session of data.sessions) {
+                                updateSessionDisplay(session);
+                            }
+                        } catch (error) {
+                            console.error('Error polling uploads:', error);
+                        }
+                    }
+                    
+                    async function dismissSession(sessionId) {
+                        try {
+                            const response = await fetch(`/playlists/""" + self.card.cardId + r"""/upload-session/${sessionId}`, {
+                                method: 'DELETE'
+                            });
+                            if (response.ok) {
+                                document.getElementById(`upload-${sessionId}`).remove();
+                                pollActiveUploads();
+                            }
+                        } catch (error) {
+                            console.error('Error dismissing session:', error);
+                            alert('Failed to dismiss session');
+                        }
+                    }
+                    
+                    async function stopSession(sessionId) {
+                        if (!confirm('Stop this upload session? This will revert to the last saved state.')) {
+                            return;
+                        }
+                        
+                        try {
+                            const response = await fetch(`/playlists/""" + self.card.cardId + r"""/upload-session/${sessionId}/stop`, {
+                                method: 'POST'
+                            });
+                            if (response.ok) {
+                                // Remove the session from UI
+                                document.getElementById(`upload-${sessionId}`).remove();
+                                pollActiveUploads();
+                            } else {
+                                alert('Failed to stop session');
+                            }
+                        } catch (error) {
+                            console.error('Error stopping session:', error);
+                            alert('Failed to stop session');
+                        }
+                    }
+                    
+                    function updateSessionDisplay(session) {
+                        let sessionEl = document.getElementById(`upload-${session.session_id}`);
+                        
+                        if (!sessionEl) {
+                            sessionEl = document.createElement('div');
+                            sessionEl.id = `upload-${session.session_id}`;
+                            document.getElementById('uploads-list').appendChild(sessionEl);
+                        }
+                        
+                        const isDone = session.overall_status === 'done';
+                        const isError = session.overall_status === 'error';
+                        const borderColor = isDone ? 'border-green-200 bg-green-50' : isError ? 'border-red-200 bg-red-50' : 'border-blue-200 bg-white';
+                        sessionEl.className = `border rounded-lg p-4 ${borderColor}`;
+                        
+                        // Build file list with states
+                        const filesHtml = (session.files || []).map(file => {
+                            let stateIcon = '⏳';
+                            let stateColor = 'text-gray-600';
+                            let stateLabel = file.status || 'pending';
+                            
+                            if (file.status === 'completed') {
+                                stateIcon = '✅';
+                                stateColor = 'text-green-600';
+                            } else if (file.status === 'yoto_uploading') {
+                                stateIcon = '⬆️';
+                                stateColor = 'text-blue-600';
+                            } else if (file.status === 'converting') {
+                                stateIcon = '🔄';
+                                stateColor = 'text-yellow-600';
+                            } else if (file.status === 'normalizing') {
+                                stateIcon = '🔊';
+                                stateColor = 'text-purple-600';
+                            } else if (file.status === 'queued') {
+                                stateIcon = '📋';
+                                stateColor = 'text-indigo-600';
+                            } else if (file.status === 'uploading') {
+                                stateIcon = '⬆️';
+                                stateColor = 'text-blue-600';
+                            } else if (file.status === 'pending') {
+                                stateIcon = '⏳';
+                                stateColor = 'text-gray-500';
+                            } else if (file.status === 'error') {
+                                stateIcon = '❌';
+                                stateColor = 'text-red-600';
+                            }
+                            
+                            return `<div class="flex items-center justify-between py-2 px-2 bg-gray-50 rounded hover:bg-gray-100 transition-colors">
+                                <span class="text-sm text-gray-800 flex-1">📄 ${file.filename}</span>
+                                <span class="${stateColor} text-sm font-medium whitespace-nowrap ml-2">${stateIcon} ${stateLabel.replace(/_/g, ' ')}</span>
+                            </div>`;
+                        }).join('');
+                        
+                        const totalFiles = session.files ? session.files.length : 0;
+                        const doneFiles = session.files ? session.files.filter(f => f.status === 'completed').length : 0;
+                        const progress = totalFiles > 0 ? Math.round((doneFiles / totalFiles) * 100) : 0;
+                        
+                        let actionButtons = '';
+                        if (isDone) {
+                            actionButtons = `
+                                <button onclick="dismissSession('${session.session_id}')" 
+                                        class="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors">
+                                    Dismiss
+                                </button>
+                            `;
+                        } else {
+                            actionButtons = `
+                                <button onclick="stopSession('${session.session_id}')" 
+                                        class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
+                                    Stop Upload
+                                </button>
+                            `;
+                        }
+                        
+                        sessionEl.innerHTML = `
+                            <div class="mb-3">
+                                <div class="flex justify-between items-center mb-2">
+                                    <div>
+                                        <span class="font-medium text-gray-900">Upload Session ${session.session_id.substring(0, 8)}</span>
+                                        <span class="text-xs text-gray-500 ml-2">${isDone ? '✓ Complete' : isError ? '✗ Error' : 'Processing'}</span>
+                                    </div>
+                                    <span class="text-sm text-gray-600 font-semibold">${doneFiles}/${totalFiles} files</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5 mb-3">
+                                    <div class="bg-blue-600 h-2.5 rounded-full transition-all" style="width: ${progress}%"></div>
+                                </div>
+                                <div class="text-xs text-gray-600">${progress}% complete</div>
+                            </div>
+                            <div class="space-y-1 mb-3">
+                                ${filesHtml}
+                            </div>
+                            <div class="flex justify-end">
+                                ${actionButtons}
+                            </div>
+                        `;
+                    }
+                    
+                    // Start polling every 2 seconds
+                    pollActiveUploads();
+                    setInterval(pollActiveUploads, 2000);
+                    """),
+                ),
                 
                 # Chapters/Items section
                 self._render_chapters_section(chapters),
@@ -277,10 +440,13 @@ class EditControlsPartial(Component):
                 // Show checkboxes after content is rendered
                 document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.classList.remove('hidden'));
                 // Set up mutation observer to show new checkboxes if more content is added
-                const observer = new MutationObserver(() => {
-                    document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.classList.remove('hidden'));
-                });
-                observer.observe(document.getElementById('chapters-list'), {childList: true, subtree: true});
+                const list = document.getElementById('chapters-list');
+                if (list) {
+                    const observer = new MutationObserver(() => {
+                        document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.classList.remove('hidden'));
+                    });
+                    observer.observe(list, {childList: true, subtree: true});
+                }
                 """
             )
         )

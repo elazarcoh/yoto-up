@@ -83,6 +83,7 @@ class CardListPartial(Component):
         page: int = 1,
         page_size: int = 20,
     ):
+        print(f"DEBUG: CardListPartial init with {len(cards)} cards. First type: {type(cards[0]) if cards else 'None'}")
         self.cards = cards
         self.total = total
         self.page = page
@@ -96,9 +97,13 @@ class CardListPartial(Component):
         
         total_pages = (self.total + self.page_size - 1) // self.page_size
         
+        items = []
+        for card in self.cards:
+            items.append(CardListItem(card=card))
+
         return d.Div()(
             d.Div(classes="space-y-4")(
-                *[CardListItem(card) for card in self.cards]
+                *items
             ),
             
             # Pagination
@@ -153,14 +158,20 @@ class CardListPartial(Component):
 class CardListItem(Component):
     """Single card list item."""
     
-    def __init__(self, card: Dict[str, Any]):
-        self.card = card
+    def __init__(self, card: Dict[str, Any] = None):
+        self.card = card or {}
     
     def render(self):
-        card_id = self.card.get("id")
+        card_id = self.card.get("cardId") or self.card.get("id")
         title = self.card.get("title", "Untitled")
-        category = self.card.get("category", "Uncategorized")
-        cover_url = self.card.get("cover_url")
+        metadata = self.card.get("metadata", {}) or {}
+        category = metadata.get("category") or self.card.get("category", "Uncategorized")
+        
+        cover_data = metadata.get("cover") or self.card.get("cover_url")
+        if isinstance(cover_data, dict):
+            cover_url = cover_data.get("imageL") or cover_data.get("imageS")
+        else:
+            cover_url = cover_data
         
         return d.Div(classes="bg-white shadow rounded-lg p-4 flex items-center gap-4 hover:shadow-md transition-shadow")(
             d.Div(classes="h-16 w-16 rounded bg-gray-200 flex-shrink-0 overflow-hidden")(

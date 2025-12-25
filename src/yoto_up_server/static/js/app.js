@@ -73,6 +73,27 @@ function initDragAndDrop() {
     }, false);
 }
 
+/**
+ * Handle file upload when selected via file input
+ */
+function uploadFiles() {
+    const fileInput = document.getElementById('file-input');
+    const form = fileInput.closest('form');
+    
+    if (!form || !fileInput.files || fileInput.files.length === 0) {
+        return;
+    }
+    
+    // Use HTMX to submit the form as multipart/form-data
+    if (window.htmx) {
+        htmx.ajax('POST', form.getAttribute('hx-post'), {
+            values: new FormData(form),
+            target: form.getAttribute('hx-target'),
+            swap: 'innerHTML'
+        });
+    }
+}
+
 function preventDefaults(e) {
     e.preventDefault();
     e.stopPropagation();

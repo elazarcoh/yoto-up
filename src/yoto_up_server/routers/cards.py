@@ -49,15 +49,30 @@ async def list_cards(
     """
     try:
         # Fetch all cards from the API
-        cards = await yoto_client.get_my_content()
+        cards_models = await yoto_client.get_my_content()
+        
+        # Convert to dicts
+        cards = []
+        for c in cards_models:
+            if hasattr(c, "model_dump"):
+                cards.append(c.model_dump())
+            elif hasattr(c, "dict"):
+                cards.append(c.dict())
+            else:
+                cards.append(dict(c))
+        
+        if cards:
+            logger.info(f"First card: {cards[0]}")
+        else:
+            logger.info("No cards found")
         
         # Apply filters
         if title_filter:
             title_filter_lower = title_filter.lower()
-            cards = [c for c in cards if title_filter_lower in (c.title or "").lower()]
+            cards = [c for c in cards if title_filter_lower in (c.get("title") or "").lower()]
         
         if category:
-            cards = [c for c in cards if c.metadata and c.metadata.get("category") == category]
+            cards = [c for c in cards if c.get("metadata", {}).get("category") == category]
         
         # Paginate
         total = len(cards)

@@ -23,6 +23,7 @@ from yoto_up_server.templates.upload import (
     UploadQueuePartial,
     FileRowPartial,
     UploadProgressPartial,
+    TargetFieldsPartial,
 )
 
 
@@ -42,6 +43,33 @@ async def upload_page(request: Request, session_api: AuthenticatedSessionApiDep)
     )
 
 
+@router.get("/target-fields", response_class=HTMLResponse)
+async def get_target_fields(
+    request: Request,
+    yoto_client: YotoClientDep,
+    target: str = Query(..., description="Target type (new or existing)"),
+):
+    """
+    Get target fields based on selection.
+    """
+    cards = []
+    if target == "existing":
+        try:
+            cards_models = await yoto_client.get_my_content()
+            # Convert to dicts
+            for c in cards_models:
+                if hasattr(c, "model_dump"):
+                    cards.append(c.model_dump())
+                elif hasattr(c, "dict"):
+                    cards.append(c.dict())
+                else:
+                    cards.append(dict(c))
+        except Exception as e:
+            logger.error(f"Failed to fetch cards for upload target: {e}")
+            
+    return render_partial(TargetFieldsPartial(target_type=target, cards=cards))
+
+
 @router.get("/queue", response_class=HTMLResponse)
 async def get_queue(request: Request, session_api: AuthenticatedSessionApiDep):
     """
@@ -55,10 +83,9 @@ async def get_queue(request: Request, session_api: AuthenticatedSessionApiDep):
     return render_partial(UploadQueuePartial(jobs=queue))
 
 
-@router.post("/files", response_class=HTMLResponse)
+@router.post("/files")
 async def upload_files(
     request: Request,
-    session_api: AuthenticatedSessionApiDep,
     files: List[UploadFile] = File(...),
 ):
     """
@@ -67,34 +94,43 @@ async def upload_files(
     Files are stored temporarily and added to the processing queue.
     Returns HTML partial with updated queue.
     """
-    session_id = request.cookies.get("session_id", str(uuid.uuid4()))
-    
-    if session_id not in upload_queues:
-        upload_queues[session_id] = []
-    
-    queue = upload_queues[session_id]
-    
-    for file in files:
-        # Save file to temp location
-        temp_dir = Path(tempfile.gettempdir()) / "yoto_up_uploads" / session_id
-        temp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        logger.info(f"Upload files endpoint called with {len(files) if files else 0} files")
         
-        temp_path = temp_dir / file.filename
+        session_id = request.cookies.get("yoto_session", str(uuid.uuid4()))
+        logger.info(f"Session ID: {session_id}")
         
-        with open(temp_path, "wb") as f:
-            content = await file.read()
-            f.write(content)
+        if session_id not in upload_queues:
+            upload_queues[session_id] = []
         
-        job = UploadJob(
-            id=str(uuid.uuid4()),
-            filename=file.filename,
-            status=UploadStatus.QUEUED,
-            temp_path=str(temp_path),
-        )
+        queue = upload_queues[session_id]
         
-        queue.append(job)
-    
-    return render_partial(UploadQueuePartial(jobs=queue))
+        for file in files:
+            logger.info(f"Processing file: {file.filename}")
+            # Save file to temp location
+            temp_dir = Path(tempfile.gettempdir()) / "yoto_up_uploads" / session_id
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            
+            temp_path = temp_dir / file.filename
+            
+            with open(temp_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            
+            job = UploadJob(
+                id=str(uuid.uuid4()),
+                filename=file.filename,
+                status=UploadStatus.QUEUED,
+                temp_path=str(temp_path),
+            )
+            
+            queue.append(job)
+        
+        logger.info(f"Files uploaded successfully, queue size: {len(queue)}")
+        return render_partial(UploadQueuePartial(jobs=queue))
+    except Exception as e:
+        logger.error(f"Error uploading files: {e}", exc_info=True)
+        raise
 
 
 @router.delete("/files/{job_id}", response_class=HTMLResponse)

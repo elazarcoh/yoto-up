@@ -1018,3 +1018,62 @@ async def delete_upload_session(
     except Exception as e:
         logger.error(f"Failed to delete upload session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/stop", response_class=JSONResponse
+)
+async def stop_upload_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    request: Request,
+    container: ContainerDep,
+    session_api: AuthenticatedSessionApiDep,
+) -> DeleteUploadSessionResponse:
+    """
+    Stop an upload session that is currently processing.
+
+    This will cancel further processing and mark the session as stopped.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+
+    Returns:
+        JSON confirmation
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+        upload_processing_service = container.upload_processing_service()
+
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Mark session to stop
+        upload_processing_service.stop_session(session_id)
+        
+        # Mark all files as errored to update session status
+        for file_status in session.files:
+            upload_session_service.mark_file_error(
+                session_id, file_status.file_id, "User stopped upload"
+            )
+
+        logger.info(f"Stopped upload session {session_id}")
+
+        return DeleteUploadSessionResponse(
+            status="ok",
+            message="Upload session stopped successfully",
+            session_id=session_id,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to stop upload session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -434,3 +434,65 @@ class SessionAwareApiService:
 
         # Remove API client which clears the token data
         self.remove_api_client(session_id)
+
+    # Proxy methods for YotoApiClient API calls
+    # ============================================================================
+
+    async def get_my_content(self) -> list:
+        """
+        Get user's content from Yoto API.
+        
+        Returns:
+            List of Card objects
+        """
+        client = await self.get_client()
+        return await client.get_my_content()
+
+    async def get_card(self, card_id: str) -> Optional:
+        """
+        Get a specific card by ID.
+        
+        Args:
+            card_id: Card ID to fetch
+            
+        Returns:
+            Card object or None if not found
+        """
+        client = await self.get_client()
+        return await client.get_card(card_id)
+
+    async def create_card(self, card):
+        """
+        Create a new card.
+        
+        Args:
+            card: Card object to create
+            
+        Returns:
+            Created Card object with ID
+        """
+        client = await self.get_client()
+        return await client.create_card(card)
+
+    async def update_card(self, card):
+        """
+        Update an existing card.
+        
+        Args:
+            card: Card object to update
+            
+        Returns:
+            Updated Card object
+        """
+        client = await self.get_client()
+        return await client.update_card(card)
+
+    async def delete_card(self, card_id: str) -> None:
+        """
+        Delete a card.
+        
+        Args:
+            card_id: Card ID to delete
+        """
+        client = await self.get_client()
+        return await client.delete_card(card_id)
