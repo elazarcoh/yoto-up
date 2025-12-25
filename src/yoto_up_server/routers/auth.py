@@ -1,11 +1,14 @@
 """
 Authentication router.
 
-Handles device-code OAuth flow for Yoto API authentication.
+Handles OAuth flow with session-based authentication and soft persistence.
 """
 
 import os
+import secrets
+import time
 from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Request, Response
@@ -15,7 +18,15 @@ from pydantic import BaseModel
 
 # Import config from the existing yoto_up package
 from yoto_up.yoto_app import config as yoto_config
-from yoto_up_server.dependencies import ApiServiceDep
+from yoto_up.yoto_api_client import YotoAuthError
+from yoto_up_server.dependencies import SessionAwareApiServiceDep, SessionServiceDep
+from yoto_up_server.middleware.session_middleware import (
+    set_session_cookie,
+    clear_session_cookie,
+    get_session_id_from_request,
+    get_cookie_payload_from_request,
+    SESSION_COOKIE_SECURE,
+)
 from yoto_up_server.templates.auth import (
     AuthPage,
     AuthStatusPartial,
@@ -48,9 +59,13 @@ class TokenResponse(BaseModel):
 
 
 @router.get("/", response_class=HTMLResponse)
-async def auth_page(request: Request, api_service: ApiServiceDep) -> str:
+async def auth_page(
+    request: Request,
+    session_api_service: SessionAwareApiServiceDep,
+) -> str:
     """Render the authentication page."""
-    is_authenticated = api_service.is_authenticated()
+    session_id = get_session_id_from_request(request)
+    is_authenticated = session_api_service.is_session_authenticated(session_id)
 
     return render_page(
         title="Authentication - Yoto Up",
@@ -60,9 +75,13 @@ async def auth_page(request: Request, api_service: ApiServiceDep) -> str:
 
 
 @router.get("/status", response_class=HTMLResponse)
-async def auth_status(request: Request, api_service: ApiServiceDep) -> str:
+async def auth_status(
+    request: Request,
+    session_api_service: SessionAwareApiServiceDep,
+) -> str:
     """Return current authentication status as HTML partial."""
-    is_authenticated = api_service.is_authenticated()
+    session_id = get_session_id_from_request(request)
+    is_authenticated = session_api_service.is_session_authenticated(session_id)
 
     return render_partial(AuthStatusPartial(is_authenticated=is_authenticated))
 
@@ -74,9 +93,6 @@ async def start_oauth_flow(request: Request):
 
     Redirects user to Yoto login page with authorization request.
     """
-    import secrets
-    from urllib.parse import urlencode
-
     client_id = yoto_config.CLIENT_ID
 
     if not client_id:
@@ -91,7 +107,9 @@ async def start_oauth_flow(request: Request):
         # Generate state token for CSRF protection
         state = secrets.token_urlsafe(32)
 
-        # Store state in app state storage
+        # Store state in app state storage (in-memory, session-specific CSRF protection)
+        if not hasattr(request.app.state, "oauth_states"):
+            request.app.state.oauth_states = {}
         request.app.state.oauth_states[state] = True
 
         # Build authorization URL  (matching Flet app's approach)
@@ -128,7 +146,7 @@ async def start_oauth_flow(request: Request):
 
 
 @router.post("/device-code", response_class=HTMLResponse)
-async def start_device_auth(request: Request, api_service: ApiServiceDep):
+async def start_device_auth(request: Request):
     """
     Start the device code authentication flow (LEGACY - use /oauth-start instead).
 
@@ -165,6 +183,11 @@ async def start_device_auth(request: Request, api_service: ApiServiceDep):
         device_code = DeviceCodeResponse(**data)
 
         # Store device code in session for polling
+        if not hasattr(request.app.state, "pending_device_code"):
+            request.app.state.pending_device_code = None
+        if not hasattr(request.app.state, "poll_count"):
+            request.app.state.poll_count = 0
+
         request.app.state.pending_device_code = device_code
         request.app.state.poll_count = 0  # Reset poll count
 
@@ -197,7 +220,11 @@ async def start_device_auth(request: Request, api_service: ApiServiceDep):
 
 
 @router.post("/poll", response_class=HTMLResponse)
-async def poll_device_auth(request: Request, api_service: ApiServiceDep):
+async def poll_device_auth(
+    request: Request,
+    session_api_service: SessionAwareApiServiceDep,
+    session_service: SessionServiceDep,
+):
     """
     Poll for device authentication completion.
 
@@ -236,34 +263,44 @@ async def poll_device_auth(request: Request, api_service: ApiServiceDep):
                 tokens = response.json()
                 access_token = tokens.get("access_token")
                 refresh_token = tokens.get("refresh_token")
-                id_token = tokens.get("id_token")
+                expires_in = tokens.get("expires_in", 600)
 
-                if access_token:
-                    # Save tokens using the API service
-                    await api_service.save_tokens(
+                if access_token and refresh_token:
+                    # Create session from tokens
+                    session_id, cookie_payload = await session_api_service.create_session_from_tokens(
                         access_token=access_token,
                         refresh_token=refresh_token,
-                        id_token=id_token,
+                        expires_in=expires_in,
                     )
 
                     # Clear pending device code
                     request.app.state.pending_device_code = None
                     request.app.state.poll_count = 0
 
-                    logger.info("Device authentication successful")
+                    logger.info("Device authentication successful, session created")
 
-                    # Return success with HX-Trigger to stop polling
+                    # Create response with session cookie
                     html = render_partial(
                         AuthStatusPartial(
                             is_authenticated=True,
                             message="Authentication successful!",
                         )
                     )
-                    return Response(
+                    resp = Response(
                         content=html,
                         headers={"HX-Trigger": "auth-complete"},
                         media_type="text/html",
                     )
+
+                    # Set session cookie
+                    set_session_cookie(
+                        resp,
+                        session_service,
+                        cookie_payload,
+                        secure=SESSION_COOKIE_SECURE,
+                    )
+
+                    return resp
 
             # Handle OAuth error responses
             try:
@@ -354,21 +391,34 @@ async def poll_device_auth(request: Request, api_service: ApiServiceDep):
 
 
 @router.post("/logout")
-async def logout(request: Request, api_service: ApiServiceDep):
-    """Log out and clear tokens."""
-    api_service.clear_tokens()
+async def logout(
+    request: Request,
+    session_api_service: SessionAwareApiServiceDep,
+):
+    """Log out and clear session."""
+    session_id = get_session_id_from_request(request)
 
-    return Response(
+    if session_id:
+        session_api_service.logout_session(session_id)
+
+    # Create response with redirect
+    resp = Response(
         headers={
             "HX-Redirect": "/auth/",
         }
     )
 
+    # Clear session cookie
+    clear_session_cookie(resp)
+
+    return resp
+
 
 @router.get("/oauth-callback")
 async def oauth_callback(
     request: Request,
-    api_service: ApiServiceDep,
+    session_api_service: SessionAwareApiServiceDep,
+    session_service: SessionServiceDep,
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
@@ -376,18 +426,19 @@ async def oauth_callback(
     """
     Handle OAuth authorization code callback from Yoto.
 
-    Exchanges authorization code for access token.
+    Exchanges authorization code for access token and creates session.
     Redirects to home page on success, returns to auth page on error.
     """
 
     try:
         # Verify state token for CSRF protection
-        if not state or state not in request.app.state.oauth_states:
+        oauth_states = getattr(request.app.state, "oauth_states", {})
+        if not state or state not in oauth_states:
             logger.warning("State mismatch in OAuth callback")
             return RedirectResponse(url="/auth/?error=invalid_state", status_code=302)
 
         # Clean up used state
-        del request.app.state.oauth_states[state]
+        del oauth_states[state]
 
         # Handle authorization errors
         if error:
@@ -426,25 +477,35 @@ async def oauth_callback(
             token_data = token_response.json()
             access_token = token_data.get("access_token")
             refresh_token = token_data.get("refresh_token")
-            id_token = token_data.get("id_token")
+            expires_in = token_data.get("expires_in", 600)
 
-            if not access_token:
-                logger.error("No access token in response")
+            if not access_token or not refresh_token:
+                logger.error("Missing tokens in response")
                 return RedirectResponse(
-                    url="/auth/?error=no_access_token", status_code=302
+                    url="/auth/?error=no_tokens", status_code=302
                 )
 
-            # Save tokens
-            await api_service.save_tokens(access_token, refresh_token, id_token)
-            logger.info("OAuth authentication successful, tokens saved")
+            # Create session from tokens
+            session_id, cookie_payload = await session_api_service.create_session_from_tokens(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_in=expires_in,
+            )
 
-            # Verify tokens were saved and API is initialized
-            await api_service.initialize()
-            is_auth = api_service.is_authenticated()
-            logger.info(f"API authentication status after token save: {is_auth}")
+            logger.info(f"OAuth authentication successful, session created: {session_id[:8]}...")
 
-            # Redirect to home page
-            return RedirectResponse(url="/", status_code=302)
+            # Create redirect response
+            resp = RedirectResponse(url="/", status_code=302)
+
+            # Set session cookie
+            set_session_cookie(
+                resp,
+                session_service,
+                cookie_payload,
+                secure=SESSION_COOKIE_SECURE,
+            )
+
+            return resp
 
     except httpx.HTTPError as e:
         logger.error(f"HTTP error during OAuth callback: {e}")

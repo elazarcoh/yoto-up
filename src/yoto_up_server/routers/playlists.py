@@ -25,11 +25,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
 
 from yoto_up.models import Card
+from yoto_up.yoto_api_client import YotoApiClient
 from yoto_up_server.dependencies import (
-    AuthenticatedApiDep,
+    AuthenticatedSessionApiDep,
     ContainerDep,
     UploadProcessingServiceDep,
     UploadSessionServiceDep,
+    YotoClientDep,
 )
 from yoto_up_server.models import (
     CardFilterRequest,
@@ -68,13 +70,13 @@ router = APIRouter()
 
 
 @router.get("/modal/new", response_class=HTMLResponse)
-async def new_playlist_modal(request: Request, api_service: AuthenticatedApiDep) -> str:
+async def new_playlist_modal(request: Request, yoto_client: YotoClientDep) -> str:
     """Serve the new playlist creation modal."""
     return render_partial(NewPlaylistModalPartial())
 
 
 @router.get("/", response_class=HTMLResponse)
-async def playlists_page(request: Request, api_service: AuthenticatedApiDep) -> str:
+async def playlists_page(request: Request, yoto_client: YotoClientDep) -> str:
     """Render the playlists page."""
     return render_page(
         title="Playlists - Yoto Up",
@@ -86,7 +88,7 @@ async def playlists_page(request: Request, api_service: AuthenticatedApiDep) -> 
 @router.get("/list", response_class=HTMLResponse)
 async def list_playlists(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     title_filter: Optional[str] = Query(None, description="Filter by title"),
     category: Optional[str] = Query(None, description="Filter by category"),
     genre: Optional[str] = Query(None, description="Filter by genre (comma separated)"),
@@ -98,7 +100,7 @@ async def list_playlists(
     """
     try:
         # Fetch library from API - get_myo_content returns Card objects
-        cards: List[Card] = await api_service.get_myo_content()
+        cards: List[Card] = await yoto_client.get_my_content()
 
         # Create filter request object
         filter_request = CardFilterRequest(
@@ -137,8 +139,6 @@ async def list_playlists(
         if e.response.status_code == 403:
             # Token is likely expired, need to re-authenticate
             logger.warning(f"Unauthorized error accessing playlists (403): {e}")
-            # Clear tokens since they're no longer valid
-            api_service.clear_tokens()
             # Return error partial that prompts re-authentication
             raise HTTPException(
                 status_code=401,
@@ -155,7 +155,7 @@ async def list_playlists(
 async def get_playlist_detail(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
 ) -> str:
     """
     Get playlist (card) details.
@@ -163,7 +163,7 @@ async def get_playlist_detail(
     Returns full page if direct navigation, HTML partial if HTMX request.
     """
     try:
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
 
         if not card:
             raise HTTPException(status_code=404, detail="Card not found")
@@ -193,7 +193,7 @@ async def get_playlist_detail(
 async def get_playlist_json(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
 ) -> Dict[str, Any]:
     """
     Get playlist (card) data as JSON.
@@ -201,7 +201,7 @@ async def get_playlist_json(
     Returns the card data in JSON format.
     """
     try:
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
 
         if not card:
             raise HTTPException(status_code=404, detail="Card not found")
@@ -222,7 +222,7 @@ async def get_playlist_json(
 @router.post("/create", response_class=HTMLResponse)
 async def create_playlist(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     title: Annotated[str, Form(..., description="Playlist title")],
 ) -> str:
     """
@@ -232,7 +232,7 @@ async def create_playlist(
     """
     try:
         # Create a new card via API
-        card: Card = await api_service.create_card(Card(title=title))
+        card: Card = await yoto_client.create_card(Card(title=title))
 
         return render_partial(PlaylistDetailPartial(card=card))
 
@@ -244,7 +244,7 @@ async def create_playlist(
 @router.post("/create-with-cover", response_class=HTMLResponse)
 async def create_playlist_with_cover(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     title: Annotated[str, Form(..., description="Playlist title")],
     cover: Annotated[Optional[UploadFile], File(description="Cover image file")] = None,
     category: Annotated[Optional[str], Form(description="Category")] = None,
@@ -261,7 +261,7 @@ async def create_playlist_with_cover(
     """
     try:
         # Create a new card via API
-        card: Card = await api_service.create_card(
+        card: Card = await yoto_client.create_card(
             Card(
                 title=title,
                 metadata={"category": category} if category else {},
@@ -286,7 +286,7 @@ async def create_playlist_with_cover(
 @router.post("/update-icon", response_class=JSONResponse)
 async def update_chapter_icon(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     payload: UpdateChapterIconRequest,
 ) -> UpdateChapterIconResponse:
     """
@@ -321,7 +321,7 @@ async def update_chapter_icon(
 
         if playlist_id:
             # Fetch the card
-            card: Optional[Card] = await api_service.get_card(playlist_id)
+            card: Optional[Card] = await yoto_client.get_card(playlist_id)
             if not card:
                 raise HTTPException(status_code=404, detail="Playlist not found")
         else:
@@ -359,7 +359,7 @@ async def update_chapter_icon(
             logger.info(f"Updated chapter {chapter_index} icon to {icon_field}")
 
             # Save the card back to API
-            await api_service.update_card(card)
+            await yoto_client.update_card(card)
 
             return UpdateChapterIconResponse(
                 status="success",
@@ -384,7 +384,7 @@ async def update_chapter_icon(
 @router.post("/reorder-chapters", response_class=JSONResponse)
 async def reorder_chapters(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     payload: ReorderChaptersRequest,
 ) -> ReorderChaptersResponse:
     """
@@ -403,7 +403,7 @@ async def reorder_chapters(
         logger.info(f"Reordering chapters in playlist {playlist_id}: {new_order}")
 
         # Fetch the card
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -434,7 +434,7 @@ async def reorder_chapters(
         card.content.chapters = reordered_chapters
 
         # Save the updated card
-        updated_card = await api_service.create_card(card)
+        updated_card = await yoto_client.create_card(card)
 
         logger.info(f"Successfully reordered chapters in playlist {playlist_id}")
 
@@ -451,7 +451,7 @@ async def reorder_chapters(
 async def delete_selected_chapters(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
 ) -> str:
     """
     Delete selected chapters from a playlist.
@@ -480,7 +480,7 @@ async def delete_selected_chapters(
         logger.info(f"Deleting chapters {selected_indices} from playlist {playlist_id}")
 
         # Fetch the card
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -508,7 +508,7 @@ async def delete_selected_chapters(
             chapters.pop(idx)
 
         # Save the updated card
-        await api_service.update_card(card)
+        await yoto_client.update_card(card)
 
         logger.info(f"Successfully deleted {len(selected_indices)} chapters from playlist {playlist_id}")
 
@@ -531,7 +531,7 @@ async def delete_selected_chapters(
 async def change_cover(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     cover: Annotated[Optional[UploadFile], File()] = None,
 ) -> str:
     """
@@ -546,7 +546,7 @@ async def change_cover(
             raise HTTPException(status_code=400, detail="No cover image provided")
 
         # Fetch the card
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -565,7 +565,7 @@ async def change_cover(
         card.metadata["cover_image"] = f"data:image/{cover.content_type};base64,{cover_base64}"
 
         # Save the updated card
-        await api_service.create_card(card)
+        await yoto_client.create_card(card)
 
         logger.info(f"Updated cover for playlist {playlist_id}")
 
@@ -583,11 +583,11 @@ async def change_cover(
 async def delete_playlist(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
 ) -> DeletePlaylistResponse:
     """Delete a playlist (card)."""
     try:
-        await api_service.delete_card(playlist_id)
+        await yoto_client.delete_card(playlist_id)
 
         return DeletePlaylistResponse(status="deleted", playlist_id=playlist_id)
 
@@ -606,7 +606,7 @@ async def create_upload_session(
     playlist_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     upload_request: UploadSessionInitRequest,
 ) -> UploadSessionResponse:
     """
@@ -632,7 +632,7 @@ async def create_upload_session(
             upload_request.similarity_threshold = 0.75
 
         # Verify the playlist exists
-        card = await api_service.get_card(playlist_id)
+        card = await session_api.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -678,7 +678,7 @@ async def upload_file_to_session(
     *,
     upload_session_service: UploadSessionServiceDep,
     upload_processing_service: UploadProcessingServiceDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ) -> FileUploadResponse:
     """
     Upload a single file to an upload session.
@@ -783,7 +783,7 @@ async def get_upload_session_status(
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ) -> UploadSessionStatusResponse:
     """
     Get the status of an upload session and all its files.
@@ -827,7 +827,7 @@ async def get_playlist_upload_sessions(
     playlist_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ) -> PlaylistUploadSessionsResponse:
     """
     Get all active upload sessions for a playlist.
@@ -865,7 +865,7 @@ async def get_playlist_upload_sessions(
 async def toggle_edit_mode(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     enable: Annotated[bool, Query(description="Enable or disable edit mode")] = True,
 ) -> str:
     """
@@ -886,7 +886,7 @@ async def toggle_edit_mode(
 async def get_upload_modal(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ) -> str:
     """
     Get upload modal HTML.
@@ -904,7 +904,7 @@ async def get_upload_modal(
 async def get_json_modal(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
 ) -> str:
     """
     Get JSON display modal with playlist data.
@@ -912,7 +912,7 @@ async def get_json_modal(
     Returns JSON modal partial for HTMX.
     """
     try:
-        card: Optional[Card] = await api_service.get_card(playlist_id)
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Card not found")
 
@@ -933,7 +933,7 @@ async def get_json_modal(
 async def get_icon_sidebar(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     chapter_index: Annotated[
         Optional[int], Query(description="Chapter index for single edit")
     ] = None,
@@ -975,7 +975,7 @@ async def delete_upload_session(
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ) -> DeleteUploadSessionResponse:
     """
     Delete an upload session and clean up temp files.

@@ -6,6 +6,7 @@ Run with: uvicorn yoto_up_server.main:app --reload
 """
 
 import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,12 +17,15 @@ from loguru import logger
 from pydom import render, html as d
 from pydom.element import Element
 from pydom.component import Component
+from dependency_injector.wiring import Provide
 
 from yoto_up_server.container import Container
 from yoto_up_server.routers import auth, cards, icons, playlists, upload
 from yoto_up_server.templates.base import render_page
 from yoto_up_server.templates.home import HomePage
 from yoto_up_server.dependencies import AuthenticationError
+from yoto_up_server.middleware.session_middleware import SessionMiddleware
+import dotenv
 
 
 # Application root directory
@@ -32,9 +36,11 @@ STATIC_DIR = APP_ROOT / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown."""
+    # Load environment variables from .env file
+    dotenv.load_dotenv()
+
     # Initialize the DI container
     container = Container()
-    container.wire(modules=["yoto_up_server.dependencies"])
     app.state.container = container
 
     # In-memory OAuth state storage (for CSRF protection)
@@ -54,6 +60,10 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Yoto Up Server shutting down...")
+    # Cleanup any sessions
+    session_api_service = container.session_aware_api_service()
+    cleaned = await session_api_service.cleanup_expired_sessions()
+    logger.info(f"Cleaned up {cleaned} expired sessions")
 
 
 encoders.encoders_by_class_tuples[render] = (Element, Component)
@@ -65,6 +75,13 @@ app = FastAPI(
 )
 
 
+# Add session middleware
+app.add_middleware(
+    SessionMiddleware,
+    require_https=False,  # Set to True in production with HTTPS
+)
+
+
 @app.exception_handler(AuthenticationError)
 async def authentication_error_handler(
     request: Request, exc: AuthenticationError
@@ -73,9 +90,11 @@ async def authentication_error_handler(
     Handle authentication errors by showing a session-expired modal
     and redirecting to the login page.
     """
-    
+
     html_response = (
-        d.Div(classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]")(
+        d.Div(
+            classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]"
+        )(
             d.Div(
                 classes="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center",
             )(
@@ -122,10 +141,14 @@ app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> str:
     """Render the home page."""
-    container: Container = request.app.state.container
-    api_service = container.api_service()
+    from yoto_up_server.middleware.session_middleware import get_session_id_from_request
 
-    is_authenticated = api_service.is_authenticated()
+    container: Container = request.app.state.container
+    session_api_service = container.session_aware_api_service()
+
+    # Check session-based authentication
+    session_id = get_session_id_from_request(request)
+    is_authenticated = session_api_service.is_session_authenticated(session_id)
 
     return render_page(
         title="Yoto Up",

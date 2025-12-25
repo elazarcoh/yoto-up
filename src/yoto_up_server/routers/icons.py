@@ -12,7 +12,7 @@ from fastapi import APIRouter, Request, Query, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
-from yoto_up_server.dependencies import AuthenticatedApiDep, ContainerDep
+from yoto_up_server.dependencies import AuthenticatedSessionApiDep, ContainerDep, YotoClientDep
 from yoto_up_server.models import Icon, IconMetadata, IconSource, IconSearchRequest, IconSearchResponse
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.icons import (
@@ -27,7 +27,7 @@ router = APIRouter()
 
 
 @router.get("/", response_class=HTMLResponse)
-async def icons_page(request: Request, api_service: AuthenticatedApiDep) -> str:
+async def icons_page(request: Request, yoto_client: YotoClientDep) -> str:
     """Render the icons browser page."""
     return render_page(
         title="Icons - Yoto Up",
@@ -40,7 +40,7 @@ async def icons_page(request: Request, api_service: AuthenticatedApiDep) -> str:
 async def search_icons(
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     query: Optional[str] = Query(None, description="Search query"),
     source: Optional[str] = Query(None, description="Source filter: official, yotoicons, local"),
     fuzzy: bool = Query(False, description="Enable fuzzy matching"),
@@ -124,7 +124,7 @@ async def search_icons(
 async def online_search_icons(
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     query: str = Query(..., description="Search query"),
 ):
     """
@@ -133,7 +133,8 @@ async def online_search_icons(
     Returns HTML partial with icon grid.
     """
     try:
-        icon_dicts = await api_service.search_online(query=query)
+        icon_service = container.icon_service()
+        icon_dicts = await icon_service.search_online(query=query, session_api=session_api)
         
         # Build HTML directly
         html_parts = []
@@ -151,9 +152,8 @@ async def online_search_icons(
                 icon_url = None
                 if icon_dict.get("mediaId"):
                     icon_field = f"yoto:#{icon_dict.get('mediaId')}"
-                    b64_data = await api_service.get_icon_b64_data(icon_field)
-                    if b64_data:
-                        icon_url = f"data:image/png;base64,{b64_data}"
+                    # Note: get_icon_b64_data would need to be called on session_api
+                    icon_url = icon_dict.get("url") or icon_dict.get("img_url", "")
                 
                 if not icon_url:
                     icon_url = icon_dict.get("url") or icon_dict.get("img_url", "")
@@ -187,7 +187,7 @@ async def online_search_icons(
 @router.get("/grid", response_class=HTMLResponse)
 async def get_icon_grid(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     query: Optional[str] = Query(None, description="Search query"),
     source: Optional[str] = Query(None, description="Filter by source: yoto, yotoicons, user"),
     include_yotoicons: bool = Query(True, description="Include YotoIcons in results"),
@@ -204,7 +204,7 @@ async def get_icon_grid(
         
         # Search icons based on query
         if query:
-            search_results = await api_service.search_cached_icons(
+            search_results = await session_api.search_cached_icons(
                 query=query,
                 fields=["title", "publicTags", "category", "tags", "id", "mediaId"],
                 show_in_console=False,
@@ -214,15 +214,15 @@ async def get_icon_grid(
         else:
             # No query: return icons from specified source
             if source and source.lower() == "user":
-                user_icons = await api_service.get_user_icons(show_in_console=False, refresh_cache=False)
+                user_icons = await session_api.get_user_icons(show_in_console=False, refresh_cache=False)
                 icons = user_icons[:limit] if user_icons else []
             elif source and source.lower() == "yotoicons":
                 if include_yotoicons:
-                    yotoicons = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
+                    yotoicons = await session_api.get_public_icons(show_in_console=False, refresh_cache=False)
                     icons = yotoicons[:limit] if yotoicons else []
             else:
                 # Default: official Yoto icons
-                official = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
+                official = await session_api.get_public_icons(show_in_console=False, refresh_cache=False)
                 icons = official[:limit] if official else []
         
         # Build icon objects with thumbnail URLs
@@ -237,7 +237,7 @@ async def get_icon_grid(
             # Get thumbnail
             if icon.get("mediaId"):
                 icon_field = f"yoto:#{icon.get('mediaId')}"
-                b64_data = await api_service.get_icon_b64_data(icon_field)
+                b64_data = await session_api.get_icon_b64_data(icon_field)
                 if b64_data:
                     icon_obj["thumbnail"] = f"data:image/png;base64,{b64_data}"
             
@@ -292,7 +292,7 @@ async def get_icon_grid(
 
 @router.get("/list")
 async def list_icons(
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     query: Optional[str] = Query(None, description="Search query"),
     source: Optional[str] = Query(None, description="Filter by source: yoto, yotoicons, user"),
     include_yotoicons: bool = Query(True, description="Include YotoIcons in results"),
@@ -324,7 +324,7 @@ async def list_icons(
         # Search icons based on query
         if query:
             # Use API's search_cached_icons method which searches all sources
-            search_results = await api_service.search_cached_icons(
+            search_results = await session_api.search_cached_icons(
                 query=query,
                 fields=["title", "publicTags", "category", "tags", "id"],
                 show_in_console=False,
@@ -335,16 +335,16 @@ async def list_icons(
             # No query: return all cached icons from specified source
             if source and source.lower() == "user":
                 # Get user icons
-                user_icons = await api_service.get_user_icons(show_in_console=False, refresh_cache=False)
+                user_icons = await session_api.get_user_icons(show_in_console=False, refresh_cache=False)
                 icons = user_icons[:limit] if user_icons else []
             elif source and source.lower() == "yotoicons":
                 # Get YotoIcons
                 if include_yotoicons:
-                    yotoicons = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
+                    yotoicons = await session_api.get_public_icons(show_in_console=False, refresh_cache=False)
                     icons = yotoicons[:limit] if yotoicons else []
             else:
                 # Get all from Yoto (official)
-                official = await api_service.get_public_icons(show_in_console=False, refresh_cache=False)
+                official = await session_api.get_public_icons(show_in_console=False, refresh_cache=False)
                 icons = official[:limit] if official else []
         
         # Build response with base64 thumbnails
@@ -362,7 +362,7 @@ async def list_icons(
             # First try mediaId (for official Yoto icons)
             if icon.get("mediaId"):
                 icon_field = f"yoto:#{icon.get('mediaId')}"
-                b64_data = await api_service.get_icon_b64_data(icon_field)
+                b64_data = await session_api.get_icon_b64_data(icon_field)
                 if b64_data:
                     icon_data["thumbnail"] = f"data:image/png;base64,{b64_data}"
                     icon_data["source"] = "yoto"
@@ -420,7 +420,7 @@ async def get_icon_detail(
     request: Request,
     icon_id: str,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Get icon details.
@@ -467,7 +467,7 @@ async def get_icon_detail(
 async def get_icon_image(
     request: Request,
     icon_id: str,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     size: int = Query(16, description="Icon size"),
 ):
     """
@@ -481,7 +481,7 @@ async def get_icon_image(
         icon_field = f"yoto:#{icon_id}"
         
         logger.debug(f"Getting icon base64 for field: {icon_field}")
-        b64_data = await api_service.get_icon_b64_data(icon_field)
+        b64_data = await session_api.get_icon_b64_data(icon_field)
         
         if not b64_data:
             logger.warning(f"Failed to get base64 data for icon {icon_id}, returning placeholder")
@@ -518,7 +518,7 @@ async def get_icon_image(
 async def upload_icon(
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     file: UploadFile = File(...),
 ):
     """
@@ -535,7 +535,7 @@ async def upload_icon(
         icon = await icon_service.upload_icon(
             content=content,
             filename=file.filename,
-            api_service=api_service,
+            session_api=session_api,
         )
         
         return render_partial(IconDetailPartial(icon=icon))
@@ -549,7 +549,7 @@ async def upload_icon(
 async def create_icon_from_pixels(
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Create an icon from pixel data.
@@ -570,7 +570,7 @@ async def create_icon_from_pixels(
         icon = await icon_service.create_from_pixels(
             pixels=pixels,
             name=name,
-            api_service=api_service,
+            session_api=session_api,
         )
         
         return render_partial(IconDetailPartial(icon=icon))

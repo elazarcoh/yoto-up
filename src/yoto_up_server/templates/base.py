@@ -284,9 +284,28 @@ def render_page(
     # Check auth status if not provided
     if is_authenticated is None:
         try:
-            container: Container = request.app.state.container
-            api_service = container.api_service()
-            is_authenticated = api_service.is_authenticated()
+            # Try to get session_id from request state (set by middleware)
+            session_id = getattr(request.state, "session_id", None)
+            
+            # If not in state, try to get from cookies
+            if not session_id:
+                from yoto_up_server.middleware.session_middleware import SESSION_COOKIE_NAME
+                cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
+                if cookie_value:
+                    # Validate and decrypt cookie to get session_id
+                    container: Container = request.app.state.container
+                    session_service = container.session_service()
+                    cookie_payload = session_service.validate_and_decrypt_cookie(cookie_value)
+                    if cookie_payload:
+                        session_id = cookie_payload.session_id
+            
+            # Check if session is authenticated
+            if session_id:
+                container: Container = request.app.state.container
+                session_api_service = container.session_aware_api_service()
+                is_authenticated = session_api_service.is_session_authenticated(session_id)
+            else:
+                is_authenticated = False
         except Exception:
             is_authenticated = False
     

@@ -36,7 +36,6 @@ from yoto_up.yoto_app import config as yoto_config
 from yoto_up import paths
 
 if TYPE_CHECKING:
-    from yoto_up_server.services.api_service import ApiService
     from yoto_up_server.services.audio_processor import AudioProcessorService
     from yoto_up_server.services.upload_session_service import UploadSessionService
 
@@ -50,11 +49,9 @@ class UploadProcessingService:
 
     def __init__(
         self,
-        api_service: "ApiService",
         audio_processor: "AudioProcessorService",
         upload_session_service: "UploadSessionService",
     ) -> None:
-        self._api_service = api_service
         self._audio_processor = audio_processor
         self._upload_session_service = upload_session_service
 

@@ -23,7 +23,16 @@ import httpx
 from loguru import logger
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 
-from yoto_up.models import Card, Device, DeviceConfig, DeviceStatus
+from yoto_up.models import (
+    Card,
+    Device,
+    DeviceConfig,
+    DeviceStatus,
+    Track,
+    Chapter,
+    TrackDisplay,
+    ChapterDisplay,
+)
 
 
 # ============================================================================
@@ -1132,3 +1141,79 @@ class YotoApiClient:
             "PUT", f"/devices/{device_id}/config", json=payload
         )
         return DeviceConfig.model_validate(response.json())
+
+    # ========================================================================
+    # Helpers
+    # ========================================================================
+
+    def get_track_from_transcoded_audio(
+        self,
+        response: TranscodedAudioResponse,
+        track_details: Optional[dict] = None,
+    ) -> Track:
+        """
+        Create a Track object from transcoded audio response.
+        
+        Args:
+            response: TranscodedAudioResponse from upload
+            track_details: Optional overrides for track properties
+            
+        Returns:
+            Track object
+        """
+        info = response.transcoded_info
+        title = "Unknown Track"
+        if info and info.metadata and info.metadata.title:
+            title = info.metadata.title
+            
+        track_kwargs = {
+            "key": "01",
+            "title": title,
+            "trackUrl": f"yoto:#{response.transcoded_sha256}",
+            "duration": info.duration if info else None,
+            "fileSize": info.file_size if info else None,
+            "channels": info.channels if info else None,
+            "format": info.format if info else None,
+            "type": "audio",
+            "overlayLabel": "1",
+            "display": TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+        }
+        
+        if track_details:
+            track_kwargs.update(track_details)
+            
+        return Track(**track_kwargs)
+
+    def get_chapter_from_transcoded_audio(
+        self,
+        response: TranscodedAudioResponse,
+        chapter_details: Optional[dict] = None,
+    ) -> Chapter:
+        """
+        Create a Chapter object from transcoded audio response.
+        
+        Args:
+            response: TranscodedAudioResponse from upload
+            chapter_details: Optional overrides for chapter properties
+            
+        Returns:
+            Chapter object
+        """
+        track = self.get_track_from_transcoded_audio(response)
+        
+        title = track.title
+        if chapter_details and "title" in chapter_details:
+            title = chapter_details["title"]
+            
+        chapter_kwargs = {
+            "key": "01",
+            "title": title,
+            "overlayLabel": "1",
+            "tracks": [track],
+            "display": ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+        }
+        
+        if chapter_details:
+            chapter_kwargs.update(chapter_details)
+            
+        return Chapter(**chapter_kwargs)

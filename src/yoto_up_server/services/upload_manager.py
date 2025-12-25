@@ -8,14 +8,12 @@ import asyncio
 import os
 import re
 from pathlib import Path
-from typing import List, Optional, Callable, TYPE_CHECKING
+from typing import List, Optional, Callable
 
 from loguru import logger
 
-from yoto_up.models import Chapter, ChapterDisplay, Track, TrackDisplay
-if TYPE_CHECKING:
-    from yoto_up_server.services.api_service import ApiService
-    from yoto_up_server.services.audio_processor import AudioProcessorService
+from yoto_up.models import Chapter, ChapterDisplay, Track, TrackDisplay, Card, CardContent
+from yoto_up.yoto_api_client import YotoApiClient
 
 
 class UploadJob:
@@ -38,8 +36,7 @@ class UploadManager:
     Handles file processing, transcoding, and card creation/update.
     """
     
-    def __init__(self, api_service: "ApiService", audio_processor: "AudioProcessorService") -> None:
-        self._api_service = api_service
+    def __init__(self, audio_processor) -> None:
         self._audio_processor = audio_processor
     
     def clean_title_from_filename(self, filepath: str, strip_leading_nums: bool = True) -> str:
@@ -62,7 +59,7 @@ class UploadManager:
     async def process_queue(
         self,
         queue: List,  # List of UploadJob-like objects
-        api_service: "ApiService",
+        yoto_client: YotoApiClient,
         target: str,
         title: Optional[str] = None,
         mode: str = "chapters",
@@ -73,7 +70,7 @@ class UploadManager:
         
         Args:
             queue: List of upload jobs.
-            api: YotoAPI instance.
+            yoto_client: YotoApiClient instance.
             target: "new" for new card, or existing card ID.
             title: Title for new card.
             mode: "chapters" or "tracks".
@@ -113,18 +110,21 @@ class UploadManager:
             try:
                 filename = os.path.basename(job.temp_path)
                 
-                def progress_callback(msg, frac):
-                    job.status = msg or "uploading"
-                    job.progress = frac or 0.0
+                def progress_callback(attempt, max_attempts):
+                    # Map attempt/max_attempts to progress 0.0-1.0
+                    # This is rough since we don't know exact progress
+                    frac = min(0.95, attempt / max_attempts)
+                    job.status = "transcoding"
+                    job.progress = frac
                 
-                result = await api_service.upload_and_transcode_audio_async(
+                result = await yoto_client.upload_and_transcode_audio_async(
                     audio_path=path,
                     filename=filename,
                     loudnorm=False,  # Already normalized if requested
-                    show_progress=True,
+                    show_progress=False, # We handle progress via callback
                     poll_interval=2,
                     max_attempts=60,
-                    progress_callback=progress_callback,
+                    callback=progress_callback,
                 )
                 
                 job.progress = 1.0
@@ -142,7 +142,7 @@ class UploadManager:
         chapters = await self._build_chapters(
             transcoded_results=transcoded_results,
             queue=queue,
-            api_service=api_service,
+            yoto_client=yoto_client,
             mode=mode,
         )
         
@@ -159,12 +159,14 @@ class UploadManager:
                 for job in queue:
                     job.status = "creating_card"
                 
-                card = await api_service.create_card(
-                    title=card_title,
-                    chapters=chapters,
+                card = await yoto_client.create_card(
+                    Card(
+                        title=card_title,
+                        content=CardContent(chapters=chapters),
+                    )
                 )
                 
-                logger.info(f"Created new card: {card.get('cardId', 'unknown')}")
+                logger.info(f"Created new card: {card.cardId}")
                 
             else:
                 # Update existing card
@@ -174,16 +176,18 @@ class UploadManager:
                     job.status = "updating_card"
                 
                 # Get existing card content
-                existing_card = await api_service.get_card(card_id)
-                existing_chapters = existing_card.get("content", {}).get("chapters", [])
+                existing_card = await yoto_client.get_card(card_id)
+                existing_chapters = existing_card.content.chapters if existing_card.content else []
                 
                 # Append new chapters
                 all_chapters = existing_chapters + chapters
                 
-                await api_service.update_card_content(
-                    card_id=card_id,
-                    chapters=all_chapters,
-                )
+                if not existing_card.content:
+                    existing_card.content = CardContent(chapters=all_chapters)
+                else:
+                    existing_card.content.chapters = all_chapters
+                
+                await yoto_client.update_card(existing_card)
                 
                 logger.info(f"Updated card: {card_id}")
             
@@ -204,7 +208,7 @@ class UploadManager:
         self,
         transcoded_results: List,
         queue: List,
-        api_service: "ApiService",
+        yoto_client: YotoApiClient,
         mode: str = "chapters",
     ) -> List[dict]:
         """
@@ -213,7 +217,7 @@ class UploadManager:
         Args:
             transcoded_results: List of transcode results from API.
             queue: Original upload queue for metadata.
-            api: YotoAPI instance.
+            yoto_client: YotoApiClient instance.
             mode: "chapters" or "tracks".
         
         Returns:
@@ -231,7 +235,7 @@ class UploadManager:
                 
                 title = self.clean_title_from_filename(job.filename)
                 
-                track = await api_service.get_track_from_transcoded_audio(
+                track = yoto_client.get_track_from_transcoded_audio(
                     result,
                     track_details={"title": title},
                 )
@@ -247,7 +251,7 @@ class UploadManager:
                     tracks=tracks,
                     display=ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
                 )
-                chapters.append(chapter.model_dump())
+                chapters.append(chapter)
         
         else:
             # Each file as a separate chapter
@@ -257,7 +261,7 @@ class UploadManager:
                 
                 title = self.clean_title_from_filename(job.filename)
                 
-                chapter = await api_service.get_chapter_from_transcoded_audio(
+                chapter = yoto_client.get_chapter_from_transcoded_audio(
                     result,
                     chapter_details={"title": title},
                 )
@@ -270,7 +274,7 @@ class UploadManager:
                         track.key = f"{j+1:02}"
                         track.overlayLabel = str(j + 1)
                 
-                chapters.append(chapter.model_dump() if hasattr(chapter, "model_dump") else chapter)
+                chapters.append(chapter)
         
         return chapters
     

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request, UploadFile, File, Form, Query, HTTPExcep
 from fastapi.responses import HTMLResponse, StreamingResponse
 from loguru import logger
 
-from yoto_up_server.dependencies import AuthenticatedApiDep, ContainerDep
+from yoto_up_server.dependencies import AuthenticatedSessionApiDep, ContainerDep, YotoClientDep
 from yoto_up_server.models import UploadJob, UploadStatus
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.upload import (
@@ -33,7 +33,7 @@ upload_queues: dict[str, List[UploadJob]] = {}
 
 
 @router.get("/", response_class=HTMLResponse)
-async def upload_page(request: Request, api_service: AuthenticatedApiDep):
+async def upload_page(request: Request, session_api: AuthenticatedSessionApiDep):
     """Render the upload page."""
     return render_page(
         title="Upload - Yoto Up",
@@ -43,7 +43,7 @@ async def upload_page(request: Request, api_service: AuthenticatedApiDep):
 
 
 @router.get("/queue", response_class=HTMLResponse)
-async def get_queue(request: Request, api_service: AuthenticatedApiDep):
+async def get_queue(request: Request, session_api: AuthenticatedSessionApiDep):
     """
     Get current upload queue.
     
@@ -58,7 +58,7 @@ async def get_queue(request: Request, api_service: AuthenticatedApiDep):
 @router.post("/files", response_class=HTMLResponse)
 async def upload_files(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     files: List[UploadFile] = File(...),
 ):
     """
@@ -101,7 +101,7 @@ async def upload_files(
 async def remove_file(
     request: Request,
     job_id: str,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Remove a file from the upload queue.
@@ -131,7 +131,7 @@ async def start_upload(
     request: Request,
     background_tasks: BackgroundTasks,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    yoto_client: YotoClientDep,
     target: str = Form(..., description="Target: new or existing card ID"),
     title: Optional[str] = Form(None, description="Title for new card"),
     mode: str = Form("chapters", description="Upload mode: chapters or tracks"),
@@ -162,7 +162,7 @@ async def start_upload(
         session_id=session_id,
         queue=queue,
         upload_manager=upload_manager,
-        api_service=api_service,
+        yoto_client=yoto_client,
         target=target,
         title=title,
         mode=mode,
@@ -176,7 +176,7 @@ async def process_uploads(
     session_id: str,
     queue: List[UploadJob],
     upload_manager,
-    api_service,
+    yoto_client,
     target: str,
     title: Optional[str],
     mode: str,
@@ -186,7 +186,7 @@ async def process_uploads(
     try:
         await upload_manager.process_queue(
             queue=queue,
-            api_service=api_service,
+            yoto_client=yoto_client,
             target=target,
             title=title,
             mode=mode,
@@ -203,7 +203,7 @@ async def process_uploads(
 @router.get("/progress")
 async def upload_progress_sse(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Server-Sent Events endpoint for upload progress.
@@ -264,7 +264,7 @@ async def upload_progress_sse(
 @router.get("/progress-html", response_class=HTMLResponse)
 async def upload_progress_html(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Get current upload progress as HTML partial.
@@ -287,7 +287,7 @@ async def upload_progress_html(
 @router.post("/clear", response_class=HTMLResponse)
 async def clear_queue(
     request: Request,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
 ):
     """
     Clear the upload queue.
@@ -314,7 +314,7 @@ async def clear_queue(
 async def analyze_intro_outro(
     request: Request,
     container: ContainerDep,
-    api_service: AuthenticatedApiDep,
+    session_api: AuthenticatedSessionApiDep,
     side: str = Form("intro", description="Which side to analyze: intro or outro"),
     max_seconds: float = Form(10.0, description="Maximum seconds to analyze"),
 ):
