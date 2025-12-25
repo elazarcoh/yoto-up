@@ -33,7 +33,10 @@ class UploadModalPartial(Component):
                 d.Form(
                     id="upload-form",
                     classes="space-y-4",
-                    **{"hx-on:submit": "handleUploadSubmit(event)"}
+                    action="javascript:void(0)",
+                    method="POST",
+                    onsubmit="handleUploadSubmit(event); return false;",
+                    **{"hx-boost": "false", "hx-disable": "true"}
                 )(
                     d.Div(classes="px-6 py-6 space-y-6")(
                         # File selection
@@ -82,12 +85,17 @@ class UploadModalPartial(Component):
                             **{"hx-on:click": "closeUploadModal()"}
                         )("Cancel"),
                         d.Button(
-                            type="button",
+                            type="submit",
                             id="start-upload-btn",
-                            classes="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed",
-                            **{"hx-on:click": "handleUploadSubmit(event)"}
+                            classes="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         )("⬆️ Start Upload"),
                     ),
+                ),
+                
+                # Upload progress section (shown when upload starts)
+                d.Div(
+                    id="uploading-section",
+                    classes="hidden px-6 py-6 space-y-4"
                 ),
                 
                 # Helper scripts
@@ -120,6 +128,7 @@ class UploadModalPartial(Component):
                     }
                     
                     async function handleUploadSubmit(event) {
+                        console.log('handleUploadSubmit called with event:', event.type);
                         event.preventDefault();
                         
                         const input = document.getElementById('file-input');
@@ -128,6 +137,7 @@ class UploadModalPartial(Component):
                             return;
                         }
                         
+                        console.log('Selected files:', input.files.length);
                         // Collect form data
                         const formData = new FormData(document.getElementById('upload-form'));
                         const uploadConfig = {

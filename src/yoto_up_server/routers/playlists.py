@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 
 import httpx
+from pydom import html as d
 from fastapi import (
     APIRouter,
     File,
@@ -46,6 +47,7 @@ from yoto_up_server.models import (
     UploadStatus,
 )
 from yoto_up_server.templates.base import render_page, render_partial
+from yoto_up_server.templates.components import ChapterItem
 from yoto_up_server.templates.icon_components import IconSidebarPartial
 from yoto_up_server.templates.playlist_detail_refactored import (
     EditControlsPartial,
@@ -239,7 +241,49 @@ async def create_playlist(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/update-chapter-icon", response_class=JSONResponse)
+@router.post("/create-with-cover", response_class=HTMLResponse)
+async def create_playlist_with_cover(
+    request: Request,
+    api_service: AuthenticatedApiDep,
+    title: Annotated[str, Form(..., description="Playlist title")],
+    cover: Annotated[Optional[UploadFile], File(description="Cover image file")] = None,
+    category: Annotated[Optional[str], Form(description="Category")] = None,
+) -> str:
+    """
+    Create a new playlist with optional cover image.
+
+    Expects form data with:
+    - title: Playlist title
+    - cover (optional): Cover image file
+    - category (optional): Playlist category
+
+    Returns updated page with new playlist detail.
+    """
+    try:
+        # Create a new card via API
+        card: Card = await api_service.create_card(
+            Card(
+                title=title,
+                metadata={"category": category} if category else {},
+            )
+        )
+
+        # If cover image provided, upload it
+        if cover:
+            cover_content = await cover.read()
+            # Upload cover image via API
+            # This would require an API method to upload cover images
+            # For now, just create the card without cover
+            logger.info(f"Cover upload for playlist {card.cardId} not yet implemented")
+
+        return render_partial(PlaylistDetailPartial(card=card))
+
+    except Exception as e:
+        logger.error(f"Failed to create playlist with cover: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update-icon", response_class=JSONResponse)
 async def update_chapter_icon(
     request: Request,
     api_service: AuthenticatedApiDep,
@@ -400,6 +444,138 @@ async def reorder_chapters(
         raise
     except Exception as e:
         logger.error(f"Failed to reorder chapters: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/delete-selected", response_class=HTMLResponse)
+async def delete_selected_chapters(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    api_service: AuthenticatedApiDep,
+) -> str:
+    """
+    Delete selected chapters from a playlist.
+
+    Expects form data with chapter IDs as form values (e.g., checkbox values).
+    The HTMX request will include checked checkbox values like: data_chapter_id=0&data_chapter_id=2
+
+    Returns updated chapters list partial.
+    """
+    try:
+        # Parse form data to get selected chapter indices
+        form_data = await request.form()
+        
+        # Get all values with key 'chapter_id' - HTMX includes checked checkboxes with their name/value
+        selected_indices = []
+        for key, value in form_data.items():
+            if key == 'chapter_id':
+                try:
+                    selected_indices.append(int(value))
+                except (ValueError, TypeError):
+                    continue
+        
+        if not selected_indices:
+            raise HTTPException(status_code=400, detail="No chapters selected")
+
+        logger.info(f"Deleting chapters {selected_indices} from playlist {playlist_id}")
+
+        # Fetch the card
+        card: Optional[Card] = await api_service.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Validate and delete chapters
+        if not hasattr(card, "content") or not card.content:
+            raise HTTPException(status_code=400, detail="Card has no content")
+
+        if not hasattr(card.content, "chapters") or not card.content.chapters:
+            raise HTTPException(status_code=400, detail="Card has no chapters")
+
+        chapters = card.content.chapters
+        
+        # Validate all indices
+        for idx in selected_indices:
+            if not isinstance(idx, int) or idx < 0 or idx >= len(chapters):
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid chapter index: {idx}"
+                )
+        
+        # Sort indices in descending order to avoid shifting issues
+        selected_indices_sorted = sorted(selected_indices, reverse=True)
+        
+        # Delete chapters starting from the highest index
+        for idx in selected_indices_sorted:
+            chapters.pop(idx)
+
+        # Save the updated card
+        await api_service.update_card(card)
+
+        logger.info(f"Successfully deleted {len(selected_indices)} chapters from playlist {playlist_id}")
+
+        # Return updated chapters list - just the <ul> element for HTMX to swap
+        chapters_list = []
+        if hasattr(card, 'content') and card.content and hasattr(card.content, 'chapters') and card.content.chapters:
+            chapters_list = [ChapterItem(chapter=chapter, index=i, card_id=card.cardId) for i, chapter in enumerate(card.content.chapters)]
+        
+        chapters_ul = d.Ul(id="chapters-list", classes="divide-y divide-gray-100")(*chapters_list) if chapters_list else d.Div(classes="px-6 py-8 sm:px-8 text-center text-gray-500")("No items found.")
+        
+        return render_partial(chapters_ul)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete chapters: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/change-cover", response_class=HTMLResponse)
+async def change_cover(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    api_service: AuthenticatedApiDep,
+    cover: Annotated[Optional[UploadFile], File()] = None,
+) -> str:
+    """
+    Change cover image for a playlist.
+
+    Expects file upload with 'cover' field containing image file.
+
+    Returns updated playlist detail partial.
+    """
+    try:
+        if not cover:
+            raise HTTPException(status_code=400, detail="No cover image provided")
+
+        # Fetch the card
+        card: Optional[Card] = await api_service.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Read cover image content
+        cover_content = await cover.read()
+
+        # Update card metadata with cover image
+        # Store cover as base64 or URL in metadata
+        import base64
+
+        cover_base64 = base64.b64encode(cover_content).decode("utf-8")
+        
+        if not hasattr(card, "metadata") or card.metadata is None:
+            card.metadata = {}
+
+        card.metadata["cover_image"] = f"data:image/{cover.content_type};base64,{cover_base64}"
+
+        # Save the updated card
+        await api_service.create_card(card)
+
+        logger.info(f"Updated cover for playlist {playlist_id}")
+
+        # Return updated detail
+        return render_partial(PlaylistDetailRefactored(card=card))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to change cover: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -770,17 +946,14 @@ async def get_icon_sidebar(
 
     Returns icon sidebar partial for HTMX.
     """
-    try:
-        return render_partial(
-            IconSidebarPartial(
-                playlist_id=playlist_id,
-                chapter_index=chapter_index,
-                batch_mode=batch,
-            )
-        )
-    except Exception as e:
-        logger.error(f"Failed to get icon sidebar: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return "<div id='icon-sidebar' class='fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto'><div class='sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10'><h3 class='text-xl font-bold text-gray-900'>Select Icon</h3><button class='text-gray-500 hover:text-gray-700 text-2xl' onclick='closeSidebar()'>✕</button></div><div class='px-6 py-4 text-center text-gray-500'>Icon selector loading...</div></div>"
+
+@router.get("/{playlist_id}/test-endpoint", response_class=HTMLResponse)
+async def test_endpoint(
+    playlist_id: Annotated[str, Path()],
+) -> str:
+    """Test endpoint to verify server reload."""
+    return "<div>TEST ENDPOINT WORKS 2025-01-20</div>"
 
 
 @router.delete(

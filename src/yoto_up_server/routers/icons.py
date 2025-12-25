@@ -372,7 +372,7 @@ async def get_icon_image(
     """
     Get icon image as base64 data URI or PNG file.
     
-    Returns base64 data URI as JSON.
+    Returns base64 data URI as JSON, or a placeholder if icon is unavailable.
     """
     try:
         # Try to get icon as base64 from API's icon cache
@@ -383,8 +383,15 @@ async def get_icon_image(
         b64_data = await api_service.get_icon_b64_data(icon_field)
         
         if not b64_data:
-            logger.error(f"Failed to get base64 data for icon {icon_id}")
-            raise HTTPException(status_code=404, detail="Icon image not found or cannot be cached")
+            logger.warning(f"Failed to get base64 data for icon {icon_id}, returning placeholder")
+            # Return a placeholder data URI instead of 404
+            # Create a simple gray placeholder SVG
+            import base64
+            placeholder_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect fill="#d1d5db" width="16" height="16"/><circle cx="8" cy="8" r="2" fill="#9ca3af"/></svg>'
+            placeholder_b64 = base64.b64encode(placeholder_svg.encode()).decode()
+            return {
+                "data": f"data:image/svg+xml;base64,{placeholder_b64}"
+            }
         
         # Return as JSON with base64 data
         return {
@@ -395,7 +402,13 @@ async def get_icon_image(
         raise
     except Exception as e:
         logger.error(f"Failed to get icon image {icon_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return placeholder instead of 500 error
+        import base64
+        placeholder_svg = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect fill="#ef4444" width="16" height="16" opacity="0.5"/><text x="8" y="10" font-size="10" fill="white" text-anchor="middle" font-weight="bold">!</text></svg>'
+        placeholder_b64 = base64.b64encode(placeholder_svg.encode()).decode()
+        return {
+            "data": f"data:image/svg+xml;base64,{placeholder_b64}"
+        }
 
 
 

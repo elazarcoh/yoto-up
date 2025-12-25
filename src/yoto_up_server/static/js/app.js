@@ -8,7 +8,24 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize HTMX event handlers
     initHtmxHandlers();
+    
+    // Initialize icon edit buttons
+    initIconEditButtons();
 });
+
+/**
+ * Initialize icon edit button event listeners
+ */
+function initIconEditButtons() {
+    document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('icon-edit-btn')) {
+            const chapterIndex = e.target.getAttribute('data-chapter-index');
+            if (chapterIndex !== null) {
+                openIconSidebar(parseInt(chapterIndex));
+            }
+        }
+    });
+}
 
 /**
  * Initialize drag-and-drop functionality for file uploads
@@ -165,4 +182,47 @@ function formatFileSize(bytes) {
     }
     
     return `${size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+/**
+ * Open icon sidebar for selecting chapter icon
+ */
+function openIconSidebar(chapterIndex) {
+    const playlistId = window.location.pathname.split('/').pop();
+    
+    // Create overlay if it doesn't exist
+    let overlay = document.getElementById('edit-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'edit-overlay';
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
+        overlay.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeSidebar();
+            }
+        });
+        document.body.appendChild(overlay);
+    }
+    overlay.classList.remove('hidden');
+    
+    // Load and show sidebar via HTMX
+    htmx.ajax(
+        'GET',
+        `/playlists/${playlistId}/icon-sidebar?chapter_index=${chapterIndex}`,
+        {
+            target: 'body',
+            swap: 'beforeend',
+            settleInfo: { target: 'body' }
+        }
+    );
+}
+
+/**
+ * Close icon sidebar
+ */
+function closeSidebar() {
+    const sidebar = document.getElementById('icon-sidebar');
+    const overlay = document.getElementById('edit-overlay');
+    if (sidebar) sidebar.remove();
+    if (overlay) overlay.classList.add('hidden');
 }

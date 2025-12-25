@@ -79,6 +79,8 @@ class ChapterItem(Component):
                 d.Input(
                     type="checkbox",
                     classes="mr-4 w-5 h-5 hidden accent-indigo-600 cursor-pointer",
+                    name="chapter_id",
+                    value=str(self.index),
                     data_chapter_id=self.index,
                 ),
                 
@@ -104,7 +106,7 @@ class ChapterItem(Component):
                         d.Button(
                             classes="absolute inset-0 bg-indigo-600 text-white opacity-0 group-hover/icon:opacity-100 rounded flex items-center justify-center cursor-pointer transition-opacity",
                             title="Edit icon",
-                            onclick=f"openIconSidebar({self.index})"
+                            **{"data-chapter-index": str(self.index), "class": "icon-edit-btn"}
                         )("🎨"),
                         
                         # Inline script to load the icon via AJAX and swap it in
