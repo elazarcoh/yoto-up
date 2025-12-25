@@ -13,7 +13,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from loguru import logger
 
 from yoto_up_server.dependencies import AuthenticatedApiDep, ContainerDep
-from yoto_up_server.models import Icon, IconSource, IconSearchRequest, IconSearchResponse
+from yoto_up_server.models import Icon, IconMetadata, IconSource, IconSearchRequest, IconSearchResponse
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.icons import (
     IconsPage,
@@ -70,22 +70,53 @@ async def search_icons(
             threshold=threshold,
         )
         
-        icons = icon_service.search_icons(
+        icon_dicts = icon_service.search_icons(
             query=search_request.query,
             source=search_request.source,
             fuzzy=search_request.fuzzy,
             threshold=search_request.threshold,
         )
         
-        return render_partial(
-            IconGridPartial(
-                icons=icons,
-                query=query,
-            )
-        )
+        logger.info(f"Found {len(icon_dicts)} icons to convert")
+        
+        # Build HTML directly instead of using components
+        html_parts = []
+        for icon_dict in icon_dicts:
+            try:
+                # Read icon data from file
+                icon_path = Path(icon_dict.get("path", ""))
+                if icon_path.exists():
+                    with open(icon_path, "rb") as f:
+                        icon_data = base64.b64encode(f.read()).decode("utf-8")
+                    
+                    icon_id = icon_dict.get("id", "")
+                    name = icon_dict.get("name", "Untitled")
+                    icon_url = f"data:image/png;base64,{icon_data}"
+                    
+                    html_parts.append(f'''
+                    <div class="aspect-square bg-white rounded-lg shadow hover:shadow-md transition-all cursor-pointer p-2 flex flex-col items-center justify-center border border-gray-200 hover:border-indigo-500 group"
+                         hx-get="/icons/{icon_id}"
+                         hx-target="#icon-detail-container"
+                         hx-swap="innerHTML">
+                        <div class="w-full h-full flex items-center justify-center overflow-hidden">
+                            <img src="{icon_url}" alt="{name}" class="max-w-full max-h-full object-contain rendering-pixelated">
+                        </div>
+                        <div class="mt-1 text-[10px] text-center text-gray-500 truncate w-full group-hover:text-indigo-600">
+                            {name}
+                        </div>
+                    </div>
+                    ''')
+            except Exception as e:
+                logger.warning(f"Failed to convert icon {icon_dict.get('id', 'unknown')}: {e}")
+        
+        logger.info(f"Successfully built HTML for {len(html_parts)} icons")
+        
+        return "\n".join(html_parts) if html_parts else '<div class="col-span-full text-center py-12 text-gray-500">No icons found.</div>'
         
     except Exception as e:
         logger.error(f"Failed to search icons: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -102,20 +133,54 @@ async def online_search_icons(
     Returns HTML partial with icon grid.
     """
     try:
-        icon_service = container.icon_service()
+        icon_dicts = await api_service.search_online(query=query)
         
-        icons = await api_service.search_online(query=query)
+        # Build HTML directly
+        html_parts = []
+        for icon_dict in icon_dicts:
+            try:
+                # Handle both dict and object responses from API
+                if hasattr(icon_dict, '__dict__'):
+                    icon_dict = icon_dict.__dict__
+                
+                # Get icon data from API
+                icon_id = icon_dict.get("id") or icon_dict.get("mediaId")
+                name = icon_dict.get("name") or icon_dict.get("title", "Untitled")
+                
+                # Try to get thumbnail from API
+                icon_url = None
+                if icon_dict.get("mediaId"):
+                    icon_field = f"yoto:#{icon_dict.get('mediaId')}"
+                    b64_data = await api_service.get_icon_b64_data(icon_field)
+                    if b64_data:
+                        icon_url = f"data:image/png;base64,{b64_data}"
+                
+                if not icon_url:
+                    icon_url = icon_dict.get("url") or icon_dict.get("img_url", "")
+                
+                if icon_url:
+                    html_parts.append(f'''
+                    <div class="aspect-square bg-white rounded-lg shadow hover:shadow-md transition-all cursor-pointer p-2 flex flex-col items-center justify-center border border-gray-200 hover:border-indigo-500 group"
+                         hx-get="/icons/{icon_id}"
+                         hx-target="#icon-detail-container"
+                         hx-swap="innerHTML">
+                        <div class="w-full h-full flex items-center justify-center overflow-hidden">
+                            <img src="{icon_url}" alt="{name}" class="max-w-full max-h-full object-contain rendering-pixelated">
+                        </div>
+                        <div class="mt-1 text-[10px] text-center text-gray-500 truncate w-full group-hover:text-indigo-600">
+                            {name}
+                        </div>
+                    </div>
+                    ''')
+            except Exception as e:
+                logger.warning(f"Failed to process online icon: {e}")
         
-        return render_partial(
-            IconGridPartial(
-                icons=icons,
-                query=query,
-                source="yotoicons",
-            )
-        )
+        return "\n".join(html_parts) if html_parts else '<div class="col-span-full text-center py-12 text-gray-500">No icons found.</div>'
         
     except Exception as e:
-        logger.error(f"Failed to search icons online: {e}")
+        logger.error(f"Failed to search online icons: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -193,13 +258,30 @@ async def get_icon_grid(
             
             icon_objects.append(icon_obj)
         
-        from yoto_up_server.templates.icon_components import IconGridPartial
-        return render_partial(
-            IconGridHtmx(
-                icons=icon_objects,
-                title=f"Icons ({len(icon_objects)})" if not query else f"Search Results ({len(icon_objects)})",
-            )
-        )
+        # Build HTML for icon grid - used for playlist icon selection
+        html_parts = []
+        if icon_objects:
+            html_parts.append('<div class="col-span-4 mb-4"><h4 class="font-semibold text-gray-700">')
+            html_parts.append(f'{"Search Results" if query else "Icons"} ({len(icon_objects)})')
+            html_parts.append('</h4></div>')
+            
+            for icon_obj in icon_objects:
+                icon_id = icon_obj.get("mediaId") or icon_obj.get("id")
+                title = icon_obj.get("title", "Untitled")
+                thumbnail = icon_obj.get("thumbnail")
+                
+                if thumbnail:
+                    # Build JavaScript inline (not using f-string for JS to avoid escaping issues)
+                    html_parts.append('''
+                    <button class="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center"
+                            title="''' + title + '''"
+                            onclick="updateChapterIcon(this, \'''' + icon_id + '''\')"
+                            type="button">
+                        <img src="''' + thumbnail + '''" alt="''' + title + '''" class="w-full h-full object-cover rounded">
+                    </button>
+                    ''')
+        
+        return "\n".join(html_parts) if html_parts else '<div class="col-span-4 p-4 text-center text-gray-500">No icons found</div>'
         
     except HTTPException:
         raise
@@ -342,23 +424,42 @@ async def get_icon_detail(
 ):
     """
     Get icon details.
-    
+
     Returns HTML partial with icon information.
     """
     try:
         icon_service = container.icon_service()
         
-        icon = icon_service.get_icon(icon_id)
+        icon_dict = icon_service.get_icon(icon_id)
         
-        if not icon:
+        if not icon_dict:
             raise HTTPException(status_code=404, detail="Icon not found")
         
-        return render_partial(IconDetailPartial(icon=icon))
+        # Convert dictionary to Icon object
+        icon_path = Path(icon_dict.get("path", ""))
+        if icon_path.exists():
+            with open(icon_path, "rb") as f:
+                icon_data = base64.b64encode(f.read()).decode("utf-8")
+            
+            icon = Icon(
+                id=icon_dict.get("id", ""),
+                name=icon_dict.get("name", "Untitled"),
+                data=f"data:image/png;base64,{icon_data}",
+                metadata=IconMetadata(
+                    source=IconSource(icon_dict.get("source", "local"))
+                ),
+            )
+            
+            return render_partial(IconDetailPartial(icon=icon))
+        else:
+            raise HTTPException(status_code=404, detail="Icon file not found")
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get icon {icon_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 

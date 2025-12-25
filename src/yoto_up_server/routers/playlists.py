@@ -946,7 +946,18 @@ async def get_icon_sidebar(
 
     Returns icon sidebar partial for HTMX.
     """
-    return "<div id='icon-sidebar' class='fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto'><div class='sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10'><h3 class='text-xl font-bold text-gray-900'>Select Icon</h3><button class='text-gray-500 hover:text-gray-700 text-2xl' onclick='closeSidebar()'>✕</button></div><div class='px-6 py-4 text-center text-gray-500'>Icon selector loading...</div></div>"
+    try:
+        # Render the icon sidebar component
+        sidebar = IconSidebarPartial(
+            playlist_id=playlist_id,
+            chapter_index=chapter_index,
+            batch_mode=batch
+        )
+        html = sidebar.render()
+        return render_partial(html)
+    except Exception as e:
+        logger.error(f"Error rendering icon sidebar: {e}", exc_info=True)
+        return f"<div class='px-6 py-4 text-red-500'>Error loading icon sidebar: {str(e)}</div>"
 
 @router.get("/{playlist_id}/test-endpoint", response_class=HTMLResponse)
 async def test_endpoint(

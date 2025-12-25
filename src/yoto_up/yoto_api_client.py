@@ -168,8 +168,8 @@ class TranscodedAudioResponse(BaseModel):
         created_at: datetime = Field(..., alias="createdAt")
         options: dict[str, Any]
         started_at: Optional[datetime] = Field(None, alias="startedAt")
-        progress: Progress
-        ffmpeg: dict[str, Any]
+        progress: Progress | None = None
+        ffmpeg: Optional[dict[str, Any]] = None
         transcoded_at: Optional[datetime] = Field(None, alias="transcodedAt")
         transcoded_info: Optional[TranscodeInfo] = Field(None, alias="transcodedInfo")
         transcoded_sha256: Optional[str] = Field(None, alias="transcodedSha256")

@@ -185,6 +185,50 @@ function formatFileSize(bytes) {
 }
 
 /**
+ * Update chapter icon
+ */
+function updateChapterIcon(buttonElement, iconId) {
+    const chapterIndex = document.querySelector('#icons-grid')?.dataset?.chapterIndex;
+    const playlistId = window.location.pathname.split('/').pop();
+    
+    if (chapterIndex === undefined || chapterIndex === null) {
+        alert('Chapter index not found');
+        return;
+    }
+    
+    const payload = {
+        chapter_index: chapterIndex === 'batch' ? null : parseInt(chapterIndex),
+        icon_id: iconId,
+        playlist_id: playlistId
+    };
+    
+    (async function() {
+        try {
+            const response = await fetch('/playlists/' + playlistId + '/update-chapter-icon', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            
+            if (response.ok) {
+                // Close sidebar and refresh
+                const sidebar = document.getElementById('icon-sidebar');
+                const overlay = document.getElementById('edit-overlay');
+                if (sidebar) sidebar.remove();
+                if (overlay) overlay.classList.add('hidden');
+                window.location.reload();
+            } else {
+                const error = await response.json();
+                alert('Error updating icon: ' + (error.detail || 'Unknown error'));
+            }
+        } catch (err) {
+            console.error('Error:', err);
+            alert('Failed to update icon: ' + err.message);
+        }
+    })();
+}
+
+/**
  * Open icon sidebar for selecting chapter icon
  */
 function openIconSidebar(chapterIndex) {

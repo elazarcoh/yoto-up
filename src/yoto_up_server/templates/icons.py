@@ -127,9 +127,9 @@ class IconGridPartial(Component):
                 "No icons found."
             )
         
-        return d.Div(classes="contents")(
-            *[IconTile(icon) for icon in self.icons]
-        )
+        # Render each IconTile and return the rendered elements
+        tiles = [IconTile(icon).render() for icon in self.icons]
+        return d.Fragment()(*tiles)
 
 
 class IconTile(Component):

@@ -61,11 +61,8 @@ class IconGridPartial(Component):
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
             title=title,
-            hx_post=self.target_endpoint,
-            hx_vals=f'{{"icon_id": "{icon_id}"}}',
-            hx_trigger="click",
-            hx_swap="none",
-            **{"hx-on::after-request": "if(event.detail.successful) window.location.reload()"}
+            onclick=f"updateChapterIcon(this, '{icon_id}')",
+            type="button",
         )(thumbnail_html)
 
 
@@ -115,7 +112,7 @@ class IconSidebarPartial(Component):
                         name="query",
                         placeholder="Search icons...",
                         classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                        hx_get=f"/icons/search",
+                        hx_get=f"/icons/grid",
                         hx_trigger="keyup changed delay:500ms",
                         hx_target="#icons-grid",
                         hx_include="[name='query']",
@@ -131,13 +128,13 @@ class IconSidebarPartial(Component):
                 d.Div(classes="mt-2 flex gap-2")(
                     d.Button(
                         classes="text-sm text-indigo-600 hover:text-indigo-900",
-                        hx_get="/icons/list?source=user&limit=100",
+                        hx_get="/icons/grid?source=user&limit=100",
                         hx_target="#icons-grid",
                         hx_swap="innerHTML",
                     )("My Icons"),
                     d.Button(
                         classes="text-sm text-indigo-600 hover:text-indigo-900",
-                        hx_get="/icons/list?source=yoto&limit=50",
+                        hx_get="/icons/grid?source=yotoicons&limit=50",
                         hx_target="#icons-grid",
                         hx_swap="innerHTML",
                     )("Yoto Icons"),
@@ -148,7 +145,7 @@ class IconSidebarPartial(Component):
             d.Div(
                 id="icons-grid",
                 classes="px-6 py-4 grid grid-cols-4 gap-3",
-                hx_get="/icons/list?source=user&limit=100",
+                hx_get="/icons/grid?source=user&limit=100",
                 hx_trigger="load",
                 hx_swap="innerHTML",
                 **{"data-chapter-index": str(chapter_index) if chapter_index is not None else "batch"}
