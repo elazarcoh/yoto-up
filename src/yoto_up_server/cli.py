@@ -6,10 +6,13 @@ import webbrowser
 import time
 import threading
 from typing import Optional
+import sys
+import logging
 
 import typer
 import uvicorn
 from loguru import logger
+from yoto_up_server.logging_config import configure_logging, EndpointsFilter
 
 
 app = typer.Typer(help="Yoto Up Server CLI")
@@ -42,6 +45,14 @@ def main(
     
     url = f"http://{host}:{port}"
     
+    # Configure logging first
+    configure_logging(log_level=log_level, debug=debug)
+    
+    # Determine actual log level for uvicorn
+    actual_log_level = log_level
+    if debug:
+        actual_log_level = "debug"
+    
     # Open browser if requested
     if not no_browser:
         open_browser(url, delay=1.5)
@@ -57,13 +68,18 @@ def main(
         os.environ["YOTO_UP_DEBUG"] = "true"
         os.environ["YOTO_UP_DEBUG_DIR"] = "./debug"
     
+    # Determine actual log level for uvicorn
+    actual_log_level = log_level
+    if debug:
+        actual_log_level = "debug"
+    
     # Run the server
     uvicorn.run(
         "yoto_up_server.main:app",
         host=host,
         port=port,
         reload=reload,
-        log_level=log_level if log_level != "info" or debug else ("debug" if debug else log_level),
+        # log_level=actual_log_level,
     )
 
 

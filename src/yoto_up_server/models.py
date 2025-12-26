@@ -170,6 +170,35 @@ class IconSearchResponse(BaseModel):
     total: int
 
 
+# Yoto Public Icon Manifest Models
+
+
+class DisplayIcon(BaseModel):
+    """Represents a public icon from the Yoto API manifest."""
+
+    createdAt: str = Field(description="ISO 8601 timestamp of creation")
+    displayIconId: str = Field(description="Yoto ID for this display icon")
+    mediaId: str = Field(description="Media ID used to fetch the icon")
+    new: Optional[bool] = Field(None, description="Whether this is a new icon")
+    public: bool = Field(description="Whether this icon is publicly available")
+    publicTags: Optional[List[str]] = Field(default_factory=list, description="Tags for public discovery")
+    title: str = Field(description="Human-readable title/name of the icon")
+    url: str = Field(description="Direct URL to the icon image")
+    userId: str = Field(description="User ID of the icon owner (usually 'yoto' for official)")
+
+    class Config:
+        populate_by_name = True
+
+
+class DisplayIconManifest(BaseModel):
+    """Container for the list of public display icons from Yoto API."""
+
+    displayIcons: List[DisplayIcon] = Field(default_factory=list, description="List of all public icons")
+
+    class Config:
+        populate_by_name = True
+
+
 # Playlist/Card Models
 
 

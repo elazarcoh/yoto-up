@@ -26,6 +26,7 @@ from yoto_up_server.services.audio_processor import AudioProcessorService
 from yoto_up_server.services.upload_manager import UploadManager
 from yoto_up_server.services.upload_processing_service import UploadProcessingService
 from yoto_up_server.services.upload_session_service import UploadSessionService
+from yoto_up_server.services.icon_service import IconService
 
 security = HTTPBearer(auto_error=False)
 
@@ -77,6 +78,7 @@ UploadProcessingServiceDep = Annotated[
     UploadProcessingService, ContainerDepends(Container.upload_processing_service)
 ]
 UploadManagerDep = Annotated[UploadManager, ContainerDepends(Container.upload_manager)]
+IconServiceDep = Annotated[IconService, ContainerDepends(Container.icon_service)]
 
 
 def get_session_id(request: Request) -> str:

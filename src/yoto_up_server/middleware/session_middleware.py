@@ -100,7 +100,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
                 if session_data:
                     # Session exists in memory
                     request.state.session = session_data
-                    logger.debug(
+                    logger.trace(
                         f"Session loaded from memory: {cookie_payload.session_id[:8]}..."
                     )
                 else:

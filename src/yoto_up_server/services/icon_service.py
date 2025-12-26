@@ -2,6 +2,7 @@
 Icon Service.
 
 Handles icon browsing, searching, and management.
+Fetches public icons from Yoto API manifest and downloads them on demand.
 """
 
 import hashlib
@@ -9,18 +10,27 @@ import json
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
+import httpx
 from loguru import logger
 from PIL import Image
 
 from yoto_up import paths
 from yoto_up.icons import render_icon
+from yoto_up_server.models import DisplayIcon, DisplayIconManifest
+
 
 class IconService:
     """
     Service for icon management.
     
-    Provides icon searching, caching, and creation capabilities.
+    - Fetches public icon manifest from Yoto API on initialization
+    - Provides icon searching and retrieval by media ID
+    - Downloads icons on demand (no caching for now, see TODO below)
+    - Manages local icon caching for CLI/TUI usage
     """
+    
+    # Public icons manifest URL (from Yoto API)
+    YOTO_MANIFEST_URL = "https://api.yotoplay.com/displayIcons"
     
     def __init__(self) -> None:
         self._cache_dir = paths.OFFICIAL_ICON_CACHE_DIR
@@ -32,16 +42,69 @@ class IconService:
         self._yotoicons_dir.mkdir(parents=True, exist_ok=True)
         self._user_icons_dir.mkdir(parents=True, exist_ok=True)
         
-        # In-memory index
-        self._index: Dict[str, Dict[str, Any]] = {}
-        self._index_built = False
+        # In-memory index for local icons
+        self._local_index: Dict[str, Dict[str, Any]] = {}
+        self._local_index_built = False
+        
+        # In-memory manifest of public icons
+        self._public_manifest: Optional[DisplayIconManifest] = None
+        self._public_manifest_by_media_id: Dict[str, DisplayIcon] = {}
+        
+        # In-memory cache for downloaded icons (bytes)
+        self._icon_bytes_cache: Dict[str, bytes] = {}
     
-    def _build_index(self):
+    async def initialize(self) -> None:
+        """Initialize the service by fetching the public icons manifest."""
+        try:
+            await self._fetch_public_manifest()
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch public manifest (will use demo/cache): {e}"
+            )
+            # Fallback: use empty manifest, will try to fetch from authenticated API later
+            self._public_manifest = DisplayIconManifest(displayIcons=[])
+            self._public_manifest_by_media_id = {}
+        
+        # Always build local index
+        self._build_local_index()
+        
+        logger.info(
+            f"IconService initialized: "
+            f"{len(self._public_manifest_by_media_id)} public icons, "
+            f"{len(self._local_index)} local icons"
+        )
+    
+    async def _fetch_public_manifest(self) -> None:
+        """Fetch the public icons manifest from Yoto API."""
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                logger.debug(f"Fetching public manifest from {self.YOTO_MANIFEST_URL}")
+                response = await client.get(self.YOTO_MANIFEST_URL)
+                response.raise_for_status()
+                data = response.json()
+            
+            # Parse the manifest
+            self._public_manifest = DisplayIconManifest.parse_obj(data)
+            
+            # Build lookup index by mediaId
+            self._public_manifest_by_media_id = {
+                icon.mediaId: icon
+                for icon in self._public_manifest.displayIcons
+            }
+            
+            logger.info(
+                f"Fetched public manifest: {len(self._public_manifest.displayIcons)} icons"
+            )
+        except Exception as e:
+            logger.error(f"Error fetching public manifest: {e}")
+            raise
+    
+    def _build_local_index(self):
         """Build the in-memory icon index from cache directories."""
-        if self._index_built:
+        if self._local_index_built:
             return
         
-        self._index = {}
+        self._local_index = {}
         
         # Index official icons
         self._index_from_dir(self._cache_dir, "official")
@@ -52,8 +115,8 @@ class IconService:
         # Index user icons
         self._index_from_dir(self._user_icons_dir, "local")
         
-        self._index_built = True
-        logger.info(f"Icon index built: {len(self._index)} icons")
+        self._local_index_built = True
+        logger.info(f"Local icon index built: {len(self._local_index)} icons")
     
     def _index_from_dir(self, directory: Path, source: str):
         """Index icons from a directory."""
@@ -73,7 +136,7 @@ class IconService:
                 except Exception:
                     pass
             
-            self._index[icon_id] = {
+            self._local_index[icon_id] = {
                 "id": icon_id,
                 "path": str(path),
                 "source": source,
@@ -81,6 +144,55 @@ class IconService:
                 "tags": meta.get("tags", []),
                 "keywords": meta.get("keywords", []),
             }
+    
+    async def get_icon_by_media_id(self, media_id: str) -> Optional[bytes]:
+        """
+        Get icon bytes by media ID from the public manifest.
+        
+        Downloads the icon from the manifest URL on demand.
+        
+        Args:
+            media_id: The media ID from DisplayIcon.mediaId
+        
+        Returns:
+            Icon image bytes, or None if not found
+        """
+        # Check if we have it cached in memory
+        if media_id in self._icon_bytes_cache:
+            logger.debug(f"Icon {media_id} found in memory cache")
+            return self._icon_bytes_cache[media_id]
+        
+        # Check if it's in the public manifest
+        if media_id not in self._public_manifest_by_media_id:
+            logger.warning(f"Icon {media_id} not found in public manifest")
+            return None
+        
+        icon = self._public_manifest_by_media_id[media_id]
+        
+        # Download the icon from the URL
+        try:
+            logger.debug(f"Downloading icon {media_id} from {icon.url}")
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(icon.url)
+                response.raise_for_status()
+                icon_bytes = response.content
+            
+            # TODO: Cache to disk using icon.mediaId as filename
+            # TODO: Implement cache expiration/management strategy
+            
+            # Cache in memory for now
+            self._icon_bytes_cache[media_id] = icon_bytes
+            
+            logger.info(f"Downloaded icon {media_id}: {len(icon_bytes)} bytes")
+            return icon_bytes
+            
+        except Exception as e:
+            logger.error(f"Error downloading icon {media_id}: {e}")
+            return None
+    
+    def get_public_manifest(self) -> DisplayIconManifest:
+        """Get the cached public icons manifest."""
+        return self._public_manifest or DisplayIconManifest(displayIcons=[])
     
     def search_icons(
         self,
@@ -91,7 +203,7 @@ class IconService:
         limit: int = 100,
     ) -> List[Dict[str, Any]]:
         """
-        Search icons.
+        Search icons in local index.
         
         Args:
             query: Search query string.
@@ -103,9 +215,9 @@ class IconService:
         Returns:
             List of matching icon dictionaries.
         """
-        self._build_index()
+        self._build_local_index()
         
-        results = list(self._index.values())
+        results = list(self._local_index.values())
         
         # Filter by source
         if source:
@@ -148,6 +260,7 @@ class IconService:
     def _simple_match(self, icon: Dict[str, Any], query: str) -> bool:
         """Simple substring matching."""
         name = icon.get("name", "").lower()
+
         tags = " ".join(icon.get("tags", [])).lower()
         keywords = " ".join(icon.get("keywords", [])).lower()
         

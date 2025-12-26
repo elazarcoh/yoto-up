@@ -12,7 +12,7 @@ from cryptography.fernet import Fernet
 from yoto_up_server.services.session_service import SessionService
 from yoto_up_server.services.session_aware_api_service import SessionAwareApiService
 from yoto_up_server.services.audio_processor import AudioProcessorService
-# from yoto_up_server.services.icon_service import IconService  # DISABLED: Icons removed
+from yoto_up_server.services.icon_service import IconService
 from yoto_up_server.services.upload_manager import UploadManager
 from yoto_up_server.services.upload_session_service import UploadSessionService
 from yoto_up_server.services.upload_processing_service import UploadProcessingService
@@ -55,7 +55,7 @@ class Container(containers.DeclarativeContainer):
         modules=[
             "yoto_up_server.routers.auth",
             "yoto_up_server.routers.cards",
-            # "yoto_up_server.routers.icons",  # DISABLED: Icons removed
+            "yoto_up_server.routers.icons",
             "yoto_up_server.routers.playlists",
             "yoto_up_server.routers.upload",
             "yoto_up_server.dependencies",
@@ -95,9 +95,9 @@ class Container(containers.DeclarativeContainer):
         debug_dir=debug_dir,
     )
 
-    # icon_service = providers.Singleton(
-    #     IconService,
-    # )  # DISABLED: Icons removed
+    icon_service = providers.Singleton(
+        IconService,
+    )
 
     upload_manager = providers.Singleton(
         UploadManager,

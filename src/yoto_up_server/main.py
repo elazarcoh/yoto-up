@@ -57,6 +57,14 @@ async def lifespan(app: FastAPI):
     (STATIC_DIR / "js").mkdir(parents=True, exist_ok=True)
     (STATIC_DIR / "css").mkdir(parents=True, exist_ok=True)
 
+    # Initialize icon service (fetches public manifest)
+    icon_service = container.icon_service()
+    try:
+        await icon_service.initialize()
+        logger.info("Icon service initialized successfully")
+    except Exception as e:
+        logger.warning(f"Icon service initialization failed: {e}")
+
     yield
 
     logger.info("Yoto Up Server shutting down...")
@@ -133,7 +141,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(cards.router, prefix="/cards", tags=["Cards"])
-# app.include_router(icons.router, prefix="/icons", tags=["Icons"])  # DISABLED: Icons removed
+app.include_router(icons.router, tags=["Icons"])
 app.include_router(playlists.router, prefix="/playlists", tags=["Playlists"])
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 

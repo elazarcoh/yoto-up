@@ -11,7 +11,7 @@ from pydom import html as d
 
 class IconGridPartial(Component):
     """Server-rendered icon grid for selection via HTMX form submission."""
-    
+
     def __init__(
         self,
         icons: List[dict],
@@ -20,43 +20,38 @@ class IconGridPartial(Component):
         super().__init__()
         self.icons = icons
         self.title = title
-    
+
     def render(self):
         if not self.icons:
             return d.Div(classes="col-span-4 p-4 text-center text-gray-500")(
                 "No icons found"
             )
-        
+
         return d.Fragment()(
             d.Div(classes="col-span-4 mb-4")(
                 d.H4(classes="font-semibold text-gray-700")(
                     f"{self.title} ({len(self.icons)})"
                 )
             ),
-            *[
-                self._render_icon(icon)
-                for icon in self.icons
-            ]
+            *[self._render_icon(icon) for icon in self.icons],
         )
-    
+
     def _render_icon(self, icon: dict):
         """Render a single icon as a submit button in a form."""
         icon_id = icon.get("mediaId") or icon.get("id")
         title = icon.get("title", "Untitled")
         thumbnail = icon.get("thumbnail")
-        
+
         thumbnail_html = (
             d.Img(
-                src=thumbnail,
-                alt=title,
-                classes="w-full h-full object-cover rounded"
+                src=thumbnail, alt=title, classes="w-full h-full object-cover rounded"
             )
             if thumbnail
             else d.Div(
                 classes="w-full h-full bg-gray-200 rounded flex items-center justify-center text-xs text-gray-400"
             )("No image")
         )
-        
+
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
             title=title,
@@ -68,7 +63,7 @@ class IconGridPartial(Component):
 
 class IconSidebarPartial(Component):
     """Server-rendered icon sidebar with HTMX form submission."""
-    
+
     def __init__(
         self,
         playlist_id: str,
@@ -79,7 +74,7 @@ class IconSidebarPartial(Component):
         self.playlist_id = playlist_id
         self.chapter_ids = chapter_ids or []
         self.track_ids = track_ids or []
-    
+
     def render(self):
         return d.Form(
             id="icon-assignment-form",
@@ -88,21 +83,27 @@ class IconSidebarPartial(Component):
             classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto flex flex-col",
         )(
             # Hidden inputs for chapter and track IDs (will be sent as form data)
-            *[d.Input(type="hidden", name="chapter_id", value=str(ch_id)) for ch_id in self.chapter_ids],
-            *[d.Input(type="hidden", name="track_id", value=str(tr_id)) for tr_id in self.track_ids],
-            
+            *[
+                d.Input(type="hidden", name="chapter_id", value=str(ch_id))
+                for ch_id in self.chapter_ids
+            ],
+            *[
+                d.Input(type="hidden", name="track_id", value=str(tr_id))
+                for tr_id in self.track_ids
+            ],
             # Header
-            d.Div(classes="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10")(
+            d.Div(
+                classes="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10"
+            )(
                 d.H3(classes="text-xl font-bold text-gray-900")(
                     f"Select Icon ({len(self.chapter_ids) + len(self.track_ids)} items)"
                 ),
                 d.Button(
                     classes="text-gray-500 hover:text-gray-700 text-2xl",
                     type="button",
-                    id="close-icon-sidebar-btn"
+                    id="close-icon-sidebar-btn",
                 )("✕"),
             ),
-            
             # Search
             d.Div(classes="px-6 py-4 bg-gray-50 border-b border-gray-200")(
                 d.Div(classes="flex gap-2")(
@@ -120,9 +121,11 @@ class IconSidebarPartial(Component):
                     ),
                     d.Div(
                         id="search-indicator",
-                        classes="htmx-indicator flex items-center"
+                        classes="htmx-indicator flex items-center",
                     )(
-                        d.Div(classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent")
+                        d.Div(
+                            classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
+                        )
                     ),
                 ),
                 d.Div(classes="mt-2 flex gap-2")(
@@ -142,7 +145,6 @@ class IconSidebarPartial(Component):
                     )("Yoto Icons"),
                 ),
             ),
-            
             # Icons grid container - flex-grow to fill remaining space
             d.Div(
                 id="icons-grid",
@@ -151,7 +153,6 @@ class IconSidebarPartial(Component):
                 hx_trigger="load",
                 hx_swap="innerHTML",
             )(),
-            
             # Script to handle sidebar interactions
             d.Script()("""//js
             // Helper function to close icon sidebar
@@ -185,7 +186,7 @@ class IconSidebarPartial(Component):
 
 class IconSearchResultsPartial(Component):
     """Partial for icon search results."""
-    
+
     def __init__(
         self,
         icons: List[dict],
@@ -194,14 +195,88 @@ class IconSearchResultsPartial(Component):
         super().__init__()
         self.icons = icons
         self.query = query
-    
+
     def render(self):
         if not self.icons:
             return d.Div(classes="col-span-4 p-4 text-center text-gray-500")(
                 f'No icons found for "{self.query}"'
             )
-        
+
         return IconGridPartial(
             icons=self.icons,
-            title=f'Search Results ({len(self.icons)})',
+            title=f"Search Results ({len(self.icons)})",
         ).render()
+
+
+class IconImg(Component):
+    """
+    Icon image component with lazy loading via HTMX.
+
+    Renders an <img> element for a Yoto icon.
+    This is the ph2 (placeholder 2) - the actual icon returned by the fetch route.
+    """
+
+    def __init__(
+        self,
+        icon_id: str,
+        src: str,
+        title: str = "Icon",
+        classes: str = "w-6 h-6",
+    ):
+        super().__init__()
+        self.icon_id = icon_id
+        self.src = src
+        self.title = title
+        self.classes = classes
+
+    def render(self):
+        # For now, return a placeholder. Once Yoto API supports icon fetching,
+        # we can construct the actual URL or base64 data
+        return d.Img(
+            src=self.src,
+            alt=self.title,
+            title=self.title,
+            classes=self.classes,
+            loading="lazy",
+        )
+
+
+class LazyIconImg(Component):
+    """
+    Lazy-loaded icon image with HTMX loading state.
+
+    Renders an initial placeholder (ph1) with HTMX hx-load trigger.
+    On load, HTMX fetches from /icons/{icon_id} which returns an IconImg (ph2).
+    """
+
+    def __init__(
+        self,
+        icon_id: str,
+        title: str = "Icon",
+        classes: str = "w-6 h-6",
+        container_id: Optional[str] = None,
+    ):
+        super().__init__()
+        self.icon_id = icon_id
+        self.title = title
+        self.classes = classes
+        self.container_id = container_id or f"icon-{icon_id.replace('#', '')}"
+
+    def render(self):
+        # ph1 (placeholder 1) - loading state
+        # This will be replaced by ph2 once the icon is loaded
+        loading_placeholder = d.Img(
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23e5e7eb' opacity='0.5'/%3E%3C/svg%3E",
+            alt=f"{self.title} (loading)",
+            title=f"{self.title} (loading)",
+            classes=f"{self.classes} animate-pulse",
+        )
+
+        # Container with HTMX load trigger
+        return d.Div(
+            id=self.container_id,
+            hx_get=f"/icons/{self.icon_id}",
+            hx_trigger="load",
+            hx_swap="outerHTML",
+            classes="inline-block",
+        )(loading_placeholder)
