@@ -52,44 +52,13 @@ async def get_icon_media(
 
         # Success - return the icon image component
         return render_partial(
-            _create_icon_img(media_id=media_id, icon_bytes=icon_bytes)
+            IconImg(icon_id=media_id, title="Icon", src=icon_bytes.decode("utf-8"))
         )
 
     except Exception as e:
         logger.error(f"Error fetching icon {media_id}: {e}")
         # Return retry indicator on error
         return render_partial(LoadingIconIndicator(media_id=media_id, status="error"))
-
-
-def _create_icon_img(media_id: str, icon_bytes: bytes) -> "IconImg":
-    """
-    Helper to create IconImg with base64-encoded icon bytes.
-
-    Args:
-        media_id: The icon media ID
-        icon_bytes: Raw icon image bytes
-
-    Returns:
-        IconImg component with data URL
-    """
-    import base64
-
-    # Detect image type from content (basic detection)
-    if icon_bytes.startswith(b"\x89PNG"):
-        mime_type = "image/png"
-    elif icon_bytes.startswith(b"\xff\xd8\xff"):
-        mime_type = "image/jpeg"
-    elif icon_bytes.startswith(b"GIF"):
-        mime_type = "image/gif"
-    elif icon_bytes.startswith(b"WEBP"):
-        mime_type = "image/webp"
-    else:
-        mime_type = "image/png"  # default
-
-    base64_data = base64.b64encode(icon_bytes).decode("utf-8")
-    src = f"data:{mime_type};base64,{base64_data}"
-
-    return IconImg(icon_id=media_id, title=f"Icon", src=src)
 
 
 @router.get("/{media_id}/raw")

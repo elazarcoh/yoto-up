@@ -9,19 +9,51 @@ from __future__ import annotations
 
 from asyncio import Future, Lock
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import (
+    Base64Bytes,
+    BaseModel,
+    EncodedBytes,
+    EncoderProtocol,
+    field_serializer,
+)
 
 from yoto_up import paths
 from yoto_up.yoto_api_client import YotoApiClient
+import base64
 
 
 if TYPE_CHECKING:
     from yoto_up_server.models import DisplayIcon, DisplayIconManifest
-    from yoto_up_server.services.session_aware_api_service import SessionAwareApiService
+
+
+class IconBytesEncoder(EncoderProtocol):
+    @classmethod
+    def decode(cls, data: bytes) -> bytes:
+        return data
+
+    @classmethod
+    def encode(cls, value: bytes) -> bytes:
+        if value.startswith(b"\x89PNG"):
+            mime_type = "image/png"
+        elif value.startswith(b"\xff\xd8\xff"):
+            mime_type = "image/jpeg"
+        elif value.startswith(b"GIF"):
+            mime_type = "image/gif"
+        elif value.startswith(b"WEBP"):
+            mime_type = "image/webp"
+        else:
+            mime_type = "image/png"  # default
+        base64_data = base64.b64encode(value).decode("utf-8")
+        src = f"data:{mime_type};base64,{base64_data}"
+        return src.encode("utf-8")
+
+    @classmethod
+    def get_json_format(cls) -> str:
+        return "base64"
 
 
 class IconEntry(BaseModel):
@@ -29,7 +61,7 @@ class IconEntry(BaseModel):
     path: str
     source: str
     name: str
-    data: bytes
+    data: Annotated[bytes, EncodedBytes(encoder=IconBytesEncoder)]
     tags: List[str] = []
     keywords: List[str] = []
 
@@ -141,7 +173,7 @@ class IconService:
         self._running_requests: Dict[str, Future] = {}
         self._running_requests_lock = Lock()
 
-        # In-memory cache for downloaded icons (bytes)
+        # In-memory cache for downloaded/loaded icons (bytes)
         self._icon_bytes_cache: Dict[str, bytes] = {}
 
     async def initialize(self) -> None:
@@ -262,55 +294,109 @@ class IconService:
         """
         if media_id.startswith("yoto:#"):
             media_id = media_id.removeprefix("yoto:#")
+
         # Check if we have it cached in memory
         if media_id in self._icon_bytes_cache:
             logger.debug(f"Icon {media_id} found in memory cache")
             return self._icon_bytes_cache[media_id]
+
+        # Check if we have it in local indices
+        entry = self._indices.get(media_id)
+        if entry:
+            logger.debug(f"Icon {media_id} found in local index")
+            self._icon_bytes_cache[media_id] = entry.data
+            return entry.data
 
         # Ensure manifests are loaded (lazy fetch on first call)
         await self._ensure_public_icons_manifest(api_client)
         await self._ensure_user_icon_manifest(api_client)
 
         # Check if it's in the public manifest
-        for manifest in (
-            self._user_manifest_by_media_id,
-            self._public_manifest_by_media_id,
-        ):
-            if media_id in manifest:
-                break
+        icon_def = None
+        target_dir = None
+        source = None
+
+        if media_id in self._user_manifest_by_media_id:
+            icon_def = self._user_manifest_by_media_id[media_id]
+            target_dir = self._user_icons_dir
+            source = "local"
+        elif media_id in self._public_manifest_by_media_id:
+            icon_def = self._public_manifest_by_media_id[media_id]
+            target_dir = self._cache_dir
+            source = "official"
         else:
             logger.warning(f"Icon {media_id} not found in any manifest")
             return None
 
-        icon = manifest[media_id]
-
         async with self._running_requests_lock:
-            if icon.url in self._running_requests:
+            if icon_def.url in self._running_requests:
                 # Another request is already in progress for this icon
                 logger.debug(f"Waiting for ongoing download of icon {media_id}")
-                future = self._running_requests[icon.url]
+                future = self._running_requests[icon_def.url]
                 await future
                 return self._icon_bytes_cache.get(media_id)
             else:
-                self._running_requests[icon.url] = Future()
+                self._running_requests[icon_def.url] = Future()
 
         # Download the icon from the URL
         try:
-            logger.debug(f"Downloading icon {media_id} from {icon.url}")
+            logger.debug(f"Downloading icon {media_id} from {icon_def.url}")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(icon.url)
+                response = await client.get(icon_def.url)
                 response.raise_for_status()
                 icon_bytes = response.content
+
             self._icon_bytes_cache[media_id] = icon_bytes
-            self._running_requests[icon.url].set_result(True)
-            del self._running_requests[icon.url]
 
-            # TODO: Cache to disk using icon.mediaId as filename
-            # TODO: Implement cache expiration/management strategy
+            # Save to disk
+            self._save_icon_to_disk(media_id, icon_bytes, icon_def, target_dir, source)
 
-            logger.info(f"Downloaded icon {media_id}: {len(icon_bytes)} bytes")
+            self._running_requests[icon_def.url].set_result(True)
+            del self._running_requests[icon_def.url]
+
+            logger.info(
+                f"Downloaded and cached icon {media_id}: {len(icon_bytes)} bytes"
+            )
             return icon_bytes
 
         except Exception as e:
             logger.error(f"Error downloading icon {media_id}: {e}")
+            if icon_def.url in self._running_requests:
+                self._running_requests[icon_def.url].set_exception(e)
+                del self._running_requests[icon_def.url]
             return None
+
+    def _save_icon_to_disk(
+        self,
+        media_id: str,
+        data: bytes,
+        icon_def: DisplayIcon,
+        target_dir: Path,
+        source: str,
+    ) -> None:
+        try:
+            filename = f"{media_id}.json"
+            file_path = target_dir / filename
+
+            entry = IconEntry(
+                id=media_id,
+                path=str(file_path),
+                source=source,
+                name=icon_def.title or icon_def.displayIconId or media_id,
+                data=data,
+                tags=icon_def.publicTags or [],
+                keywords=icon_def.publicTags or [],
+            )
+
+            with file_path.open("w") as f:
+                f.write(entry.model_dump_json(indent=2))
+
+            # Update index
+            if source == "official":
+                self._indices.official.add_entry(entry)
+            elif source == "local":
+                self._indices.local.add_entry(entry)
+
+            logger.debug(f"Saved icon {media_id} to {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to save icon {media_id} to disk: {e}")

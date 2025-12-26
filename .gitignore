@@ -72,3 +72,4 @@ docs/site/
 storage/
 assets/
 .env
+.app_data/
