@@ -15,15 +15,15 @@ from yoto_up_server.templates.htmx_helpers import (
     ToastNotificationSystem,
     ToggleClassScript,
 )
-from yoto_up_server.templates.icon_components import IconSidebarPartial
 
 
 class PlaylistDetailRefactored(Component):
     """Refactored playlist detail page using HTMX principles."""
     
-    def __init__(self, card: Card):
+    def __init__(self, card: Card, playlist_id: str = ""):
         super().__init__()
         self.card = card
+        self.playlist_id = playlist_id
     
     def render(self):
         title = self.card.title or "Untitled"
@@ -265,9 +265,6 @@ class PlaylistDetailRefactored(Component):
             # Modals and overlays (hidden by default, shown via HTMX)
             d.Div(id="edit-overlay", classes="hidden fixed inset-0 bg-black bg-opacity-50 z-40"),
             
-            # Icon sidebar placeholder (loaded via HTMX when needed)
-            d.Div(id="icon-sidebar-container")(),
-            
             # Upload modal placeholder (loaded via HTMX when needed)
             d.Div(id="upload-modal-container")(),
             
@@ -367,7 +364,7 @@ class PlaylistDetailRefactored(Component):
                 id="chapters-list",
                 classes="divide-y divide-gray-100",
             )(
-                *[ChapterItem(chapter=chapter, index=i, card_id=self.card.cardId) for i, chapter in enumerate(chapters)]
+                *[ChapterItem(chapter=chapter, index=i, card_id=self.card.cardId, playlist_id=self.playlist_id) for i, chapter in enumerate(chapters)]
             ) if chapters else d.Div(classes="px-6 py-8 sm:px-8 text-center text-gray-500")("No items found."),
         )
 
@@ -414,16 +411,6 @@ class EditControlsPartial(Component):
                     hx_swap="innerHTML",
                     title="Delete selected items"
                 )("🗑️ Delete Selected"),
-                
-                # Batch edit icons - loads icon sidebar
-                d.Button(
-                    classes="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors",
-                    hx_get=f"/playlists/{self.playlist_id}/icon-sidebar?batch=true",
-                    hx_target="#icon-sidebar-container",
-                    hx_swap="innerHTML",
-                    **{"hx-on::after-request": "classList.remove(document.getElementById('edit-overlay'), 'hidden')"},
-                    title="Edit icons for selected items"
-                )("🎨 Edit Icons"),
                 
                 # Cancel button - exits edit mode
                 d.Button(

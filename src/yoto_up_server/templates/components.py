@@ -9,11 +9,12 @@ from pydom import html as d
 class ChapterItem(Component):
     """List item for a chapter with collapsible tracks."""
     
-    def __init__(self, chapter, index: int, card_id: str = ""):
+    def __init__(self, chapter, index: int, card_id: str = "", playlist_id: str = ""):
         super().__init__()
         self.chapter = chapter
         self.index = index
         self.card_id = card_id
+        self.playlist_id = playlist_id
     
     def render(self):
         # Handle both Chapter objects and dicts
@@ -38,25 +39,6 @@ class ChapterItem(Component):
             tracks = self.chapter.tracks
         elif isinstance(self.chapter, dict) and 'tracks' in self.chapter:
             tracks = self.chapter.get('tracks', [])
-        
-        # Get display icon if available
-        icon_url = None
-        icon_id = None
-        if hasattr(self.chapter, 'display') and self.chapter.display:
-            display = self.chapter.display
-            if hasattr(display, 'icon16x16'):
-                icon_id = display.icon16x16
-        elif isinstance(self.chapter, dict) and 'display' in self.chapter:
-            display = self.chapter.get('display', {})
-            if isinstance(display, dict):
-                icon_id = display.get('icon16x16')
-        
-        # Convert icon_id to image URL (will fetch base64 from API endpoint)
-        if icon_id:
-            # Remove the "yoto:#" prefix if present to get the ID
-            if icon_id.startswith("yoto:#"):
-                icon_id = icon_id[6:]  # Remove "yoto:#" prefix
-            icon_url = f"/icons/{icon_id}/image?size=16"
         
         # Build track items
         track_items = []
@@ -94,48 +76,12 @@ class ChapterItem(Component):
                         type="button",
                     )(f"{'▼' if has_tracks else '▶'}"),
                     
-                    # Icon (16x16 or numbered placeholder)
+                    # Chapter number placeholder (simplified - no icons)
                     d.Div(
-                        id=f"icon-container-{self.index}",
-                        classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600 relative group/icon overflow-hidden"
+                        id=f"chapter-placeholder-{self.index}",
+                        classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600"
                     )(
-                        # Show icon image if available, otherwise show number (with inline script to load it)
-                        d.Span(classes="text-xs", id=f"icon-placeholder-{self.index}")(str(self.index + 1)),
-                        
-                        # Edit icon on hover
-                        d.Button(
-                            classes="absolute inset-0 bg-indigo-600 text-white opacity-0 group-hover/icon:opacity-100 rounded flex items-center justify-center cursor-pointer transition-opacity",
-                            title="Edit icon",
-                            **{"data-chapter-index": str(self.index), "class": "icon-edit-btn"}
-                        )("🎨"),
-                        
-                        # Inline script to load the icon via AJAX and swap it in
-                        d.Script() if not icon_url else d.Script()(
-                            f"""
-                            (async function() {{
-                                try {{
-                                    const response = await fetch('{icon_url}');
-                                    if (response.ok) {{
-                                        const data = await response.json();
-                                        if (data && data.data) {{
-                                            const img = document.createElement('img');
-                                            img.src = data.data;
-                                            img.alt = 'Icon {self.index + 1}';
-                                            img.className = 'w-full h-full object-cover rounded';
-                                            const container = document.getElementById('icon-container-{self.index}');
-                                            const placeholder = document.getElementById('icon-placeholder-{self.index}');
-                                            if (placeholder) {{
-                                                placeholder.remove();
-                                            }}
-                                            container.insertBefore(img, container.querySelector('button'));
-                                        }}
-                                    }}
-                                }} catch (err) {{
-                                    console.error('Failed to load icon:', err);
-                                }}
-                            }})();
-                            """
-                        ) if icon_url else "",
+                        d.Span()(str(self.index + 1))
                     ),
                     
                     # Chapter title

@@ -282,22 +282,22 @@ class ReorderChaptersRequest(BaseModel):
 
 
 class UpdateChapterIconRequest(BaseModel):
-    """Request to update a chapter's icon."""
+    """Request to update chapter/track icons."""
 
-    chapter_index: int = Field(..., ge=0, description="Index of chapter to update")
-    icon_id: str = Field(..., description="Icon ID (mediaId for Yoto icons)")
-    playlist_id: Optional[str] = None
+    icon_id: str = Field(..., description="Icon ID to assign")
+    chapter_ids: List[int] = Field(default_factory=list, description="Indices of chapters to update")
+    track_ids: List[int] = Field(default_factory=list, description="Indices of tracks to update (future)")
 
 
 # Playlist Response Models
 
 
 class UpdateChapterIconResponse(BaseModel):
-    """Response from updating a chapter's icon."""
+    """Response from updating chapter/track icons."""
 
     status: str
-    chapter_index: int
     icon_id: str
+    updated_count: int
     icon_field: str
 
 

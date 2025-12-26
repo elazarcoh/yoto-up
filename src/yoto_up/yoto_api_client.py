@@ -871,6 +871,8 @@ class YotoApiClient:
         return Card.model_validate(card_data)
 
     async def _create_or_update_card(self, card: Card) -> Card:
+        # Use exclude_none=True to avoid sending null values for optional fields
+        # The API doesn't accept null values for optional fields like content.activity
         payload = card.model_dump(exclude_none=True)
         response = await self._request("POST", "/content", json=payload)
         data = response.json()

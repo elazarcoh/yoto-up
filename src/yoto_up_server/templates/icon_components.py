@@ -3,24 +3,23 @@ Icon-related components and partials for HTMX.
 """
 
 from typing import List, Optional
+import json
 
 from pydom import Component
 from pydom import html as d
 
 
 class IconGridPartial(Component):
-    """Server-rendered icon grid for selection."""
+    """Server-rendered icon grid for selection via HTMX form submission."""
     
     def __init__(
         self,
         icons: List[dict],
         title: str = "Icons",
-        target_endpoint: str = "/playlists/update-chapter-icon",
     ):
         super().__init__()
         self.icons = icons
         self.title = title
-        self.target_endpoint = target_endpoint
     
     def render(self):
         if not self.icons:
@@ -41,7 +40,7 @@ class IconGridPartial(Component):
         )
     
     def _render_icon(self, icon: dict):
-        """Render a single icon button."""
+        """Render a single icon as a submit button in a form."""
         icon_id = icon.get("mediaId") or icon.get("id")
         title = icon.get("title", "Untitled")
         thumbnail = icon.get("thumbnail")
@@ -61,45 +60,46 @@ class IconGridPartial(Component):
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
             title=title,
-            onclick=f"updateChapterIcon(this, '{icon_id}')",
-            type="button",
+            type="submit",
+            name="icon_id",
+            value=icon_id,
         )(thumbnail_html)
 
 
 class IconSidebarPartial(Component):
-    """Server-rendered icon sidebar with search."""
+    """Server-rendered icon sidebar with HTMX form submission."""
     
     def __init__(
         self,
         playlist_id: str,
-        chapter_index: Optional[int] = None,
-        batch_mode: bool = False,
+        chapter_ids: Optional[List[int]] = None,
+        track_ids: Optional[List[int]] = None,
     ):
         super().__init__()
         self.playlist_id = playlist_id
-        self.chapter_index = chapter_index
-        self.batch_mode = batch_mode
+        self.chapter_ids = chapter_ids or []
+        self.track_ids = track_ids or []
     
     def render(self):
-        # Determine the update endpoint based on mode
-        if self.batch_mode:
-            target_endpoint = f"/playlists/{self.playlist_id}/batch-update-icons"
-        else:
-            target_endpoint = f"/playlists/{self.playlist_id}/update-chapter-icon"
-        
-        return d.Div(
-            id="icon-sidebar",
-            classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto",
-            **{"hx-on:close-sidebar": "this.classList.add('hidden')"}
+        return d.Form(
+            id="icon-assignment-form",
+            hx_post=f"/playlists/{self.playlist_id}/update-chapter-icon",
+            hx_swap="none",
+            classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto flex flex-col",
         )(
+            # Hidden inputs for chapter and track IDs (will be sent as form data)
+            *[d.Input(type="hidden", name="chapter_id", value=str(ch_id)) for ch_id in self.chapter_ids],
+            *[d.Input(type="hidden", name="track_id", value=str(tr_id)) for tr_id in self.track_ids],
+            
             # Header
             d.Div(classes="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10")(
                 d.H3(classes="text-xl font-bold text-gray-900")(
-                    "Batch Edit Icons" if self.batch_mode else "Select Icon"
+                    f"Select Icon ({len(self.chapter_ids) + len(self.track_ids)} items)"
                 ),
                 d.Button(
                     classes="text-gray-500 hover:text-gray-700 text-2xl",
-                    **{"hx-on:click": "this.closest('#icon-sidebar').classList.add('hidden'); document.getElementById('edit-overlay').classList.add('hidden')"}
+                    type="button",
+                    id="close-icon-sidebar-btn"
                 )("✕"),
             ),
             
@@ -112,7 +112,7 @@ class IconSidebarPartial(Component):
                         name="query",
                         placeholder="Search icons...",
                         classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                        hx_get=f"/icons/grid",
+                        hx_get="/icons/grid",
                         hx_trigger="keyup changed delay:500ms",
                         hx_target="#icons-grid",
                         hx_include="[name='query']",
@@ -128,12 +128,14 @@ class IconSidebarPartial(Component):
                 d.Div(classes="mt-2 flex gap-2")(
                     d.Button(
                         classes="text-sm text-indigo-600 hover:text-indigo-900",
+                        type="button",
                         hx_get="/icons/grid?source=user&limit=100",
                         hx_target="#icons-grid",
                         hx_swap="innerHTML",
                     )("My Icons"),
                     d.Button(
                         classes="text-sm text-indigo-600 hover:text-indigo-900",
+                        type="button",
                         hx_get="/icons/grid?source=yotoicons&limit=50",
                         hx_target="#icons-grid",
                         hx_swap="innerHTML",
@@ -141,15 +143,43 @@ class IconSidebarPartial(Component):
                 ),
             ),
             
-            # Icons grid container
+            # Icons grid container - flex-grow to fill remaining space
             d.Div(
                 id="icons-grid",
-                classes="px-6 py-4 grid grid-cols-4 gap-3",
+                classes="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-4 gap-3",
                 hx_get="/icons/grid?source=user&limit=100",
                 hx_trigger="load",
                 hx_swap="innerHTML",
-                **{"data-chapter-index": str(chapter_index) if chapter_index is not None else "batch"}
             )(),
+            
+            # Script to handle sidebar interactions
+            d.Script()("""//js
+            // Helper function to close icon sidebar
+            function closeIconSidebar() {
+                const overlay = document.getElementById('edit-overlay');
+                const sidebar = document.getElementById('icon-sidebar-container');
+                if(overlay) overlay.classList.add('hidden');
+                if(sidebar) sidebar.innerHTML = '';
+            }
+            
+            // Add event listener to close button
+            document.addEventListener('DOMContentLoaded', function() {
+                const closeBtn = document.getElementById('close-icon-sidebar-btn');
+                if(closeBtn) {
+                    closeBtn.addEventListener('click', closeIconSidebar);
+                }
+            });
+            
+            // Listen for successful form submissions
+            document.addEventListener('htmx:afterRequest', function(event) {
+                if(event.detail.target && event.detail.target.id === 'icon-assignment-form') {
+                    if(event.detail.xhr.status === 200) {
+                        // Form submitted successfully, close the sidebar
+                        closeIconSidebar();
+                    }
+                }
+            });
+            """),
         )
 
 
@@ -160,18 +190,12 @@ class IconSearchResultsPartial(Component):
         self,
         icons: List[dict],
         query: str,
-        playlist_id: str,
-        chapter_index: Optional[int] = None,
     ):
         super().__init__()
         self.icons = icons
         self.query = query
-        self.playlist_id = playlist_id
-        self.chapter_index = chapter_index
     
     def render(self):
-        target_endpoint = f"/playlists/{self.playlist_id}/update-chapter-icon"
-        
         if not self.icons:
             return d.Div(classes="col-span-4 p-4 text-center text-gray-500")(
                 f'No icons found for "{self.query}"'
@@ -180,5 +204,4 @@ class IconSearchResultsPartial(Component):
         return IconGridPartial(
             icons=self.icons,
             title=f'Search Results ({len(self.icons)})',
-            target_endpoint=target_endpoint,
         ).render()

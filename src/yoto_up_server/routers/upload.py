@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Optional, List
 import tempfile
+import pydom as d
 
 from fastapi import APIRouter, Request, UploadFile, File, Form, Query, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -380,14 +381,10 @@ async def analyze_intro_outro(
             max_seconds=max_seconds,
         )
         
-        return render_partial(
-            f"""
-            <div class="analysis-result">
-                <h4>Analysis Result</h4>
-                <p>Common {side} detected: {result.get('seconds_matched', 0):.2f} seconds</p>
-                <p>Matches found in {result.get('windows_matched', 0)} windows</p>
-            </div>
-            """
+        return d.Div(classes="analysis-result p-4 bg-gray-50 rounded")(
+            d.H4(classes="text-lg font-semibold mb-2")("Analysis Result"),
+            d.P()(f"Common {side} detected: {result.get('seconds_matched', 0):.2f} seconds"),
+            d.P()(f"Matches found in {result.get('windows_matched', 0)} windows"),
         )
         
     except Exception as e:

@@ -8,24 +8,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize HTMX event handlers
     initHtmxHandlers();
-    
-    // Initialize icon edit buttons
-    initIconEditButtons();
 });
 
 /**
- * Initialize icon edit button event listeners
+ * Initialize icon edit button event listeners - DEPRECATED (now using HTMX)
+ * Commented out - button clicks are now handled by HTMX hx-get attributes
  */
-function initIconEditButtons() {
-    document.addEventListener('click', function(e) {
-        if (e.target.classList && e.target.classList.contains('icon-edit-btn')) {
-            const chapterIndex = e.target.getAttribute('data-chapter-index');
-            if (chapterIndex !== null) {
-                openIconSidebar(parseInt(chapterIndex));
-            }
-        }
-    });
-}
+// function initIconEditButtons() {
+//     // OLD CODE - Icon edit buttons now use HTMX instead of JavaScript
+//     // See ChapterItem component: hx-get="/playlists/{playlist_id}/icon-sidebar?chapter_ids={index}"
+// }
 
 /**
  * Initialize drag-and-drop functionality for file uploads
@@ -116,14 +108,31 @@ function initHtmxHandlers() {
         showNotification('An error occurred. Please try again.', 'error');
     });
     
+    // Show overlay when loading icon-sidebar into it
+    document.body.addEventListener('htmx:beforeRequest', function(e) {
+        if (e.detail.target && e.detail.target.id === 'edit-overlay') {
+            // Show the overlay before loading content
+            e.detail.target.classList.remove('hidden');
+        }
+    });
+    
+    // Handle icon assignment form submission success
+    document.body.addEventListener('htmx:afterRequest', function(e) {
+        if (e.detail.xhr && e.detail.xhr.status === 200 && 
+            e.detail.pathInfo && e.detail.pathInfo.path && 
+            e.detail.pathInfo.path.includes('/update-chapter-icon')) {
+            // Close the overlay after successful icon assignment
+            const overlay = document.getElementById('edit-overlay');
+            if (overlay) {
+                overlay.classList.add('hidden');
+            }
+            showNotification('Icon assigned successfully', 'success');
+        }
+    });
+    
     // Handle HTMX before request - show loading
     document.body.addEventListener('htmx:beforeRequest', function(e) {
         // Add any global loading behavior here
-    });
-    
-    // Handle HTMX after request - hide loading
-    document.body.addEventListener('htmx:afterRequest', function(e) {
-        // Add any global loading hide behavior here
     });
 }
 
@@ -206,81 +215,22 @@ function formatFileSize(bytes) {
 }
 
 /**
- * Update chapter icon
+ * Update chapter icon - DEPRECATED (now using HTMX forms)
+ * Commented out - icon assignment now handled entirely by HTMX
  */
-function updateChapterIcon(buttonElement, iconId) {
-    const chapterIndex = document.querySelector('#icons-grid')?.dataset?.chapterIndex;
-    const playlistId = window.location.pathname.split('/').pop();
-    
-    if (chapterIndex === undefined || chapterIndex === null) {
-        alert('Chapter index not found');
-        return;
-    }
-    
-    const payload = {
-        chapter_index: chapterIndex === 'batch' ? null : parseInt(chapterIndex),
-        icon_id: iconId,
-        playlist_id: playlistId
-    };
-    
-    (async function() {
-        try {
-            const response = await fetch('/playlists/' + playlistId + '/update-chapter-icon', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-            
-            if (response.ok) {
-                // Close sidebar and refresh
-                const sidebar = document.getElementById('icon-sidebar');
-                const overlay = document.getElementById('edit-overlay');
-                if (sidebar) sidebar.remove();
-                if (overlay) overlay.classList.add('hidden');
-                window.location.reload();
-            } else {
-                const error = await response.json();
-                alert('Error updating icon: ' + (error.detail || 'Unknown error'));
-            }
-        } catch (err) {
-            console.error('Error:', err);
-            alert('Failed to update icon: ' + err.message);
-        }
-    })();
-}
+// function updateChapterIcon(buttonElement, iconId) {
+//     // OLD CODE - Icon assignment now handled by HTMX form submission
+//     // See IconSidebarPartial and IconGridPartial components
+// }
 
 /**
- * Open icon sidebar for selecting chapter icon
+ * Open icon sidebar for selecting chapter icon - DEPRECATED (now using HTMX)
+ * Commented out - sidebar loading now handled entirely by HTMX hx-get
  */
-function openIconSidebar(chapterIndex) {
-    const playlistId = window.location.pathname.split('/').pop();
-    
-    // Create overlay if it doesn't exist
-    let overlay = document.getElementById('edit-overlay');
-    if (!overlay) {
-        overlay = document.createElement('div');
-        overlay.id = 'edit-overlay';
-        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 z-40';
-        overlay.addEventListener('click', function(e) {
-            if (e.target === this) {
-                closeSidebar();
-            }
-        });
-        document.body.appendChild(overlay);
-    }
-    overlay.classList.remove('hidden');
-    
-    // Load and show sidebar via HTMX
-    htmx.ajax(
-        'GET',
-        `/playlists/${playlistId}/icon-sidebar?chapter_index=${chapterIndex}`,
-        {
-            target: 'body',
-            swap: 'beforeend',
-            settleInfo: { target: 'body' }
-        }
-    );
-}
+// function openIconSidebar(chapterIndex) {
+//     // OLD CODE - Sidebar loading now handled by HTMX hx-get attribute on ChapterItem button
+//     // See ChapterItem component: hx-get="/playlists/{playlist_id}/icon-sidebar?chapter_ids={index}"
+// }
 
 /**
  * Close icon sidebar

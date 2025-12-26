@@ -15,7 +15,6 @@ from PIL import Image
 from yoto_up import paths
 from yoto_up.icons import render_icon
 
-
 class IconService:
     """
     Service for icon management.
@@ -342,3 +341,31 @@ class IconService:
             
         except Exception as e:
             logger.error(f"Failed to refresh icon cache: {e}")
+    
+    def clear_cache(self) -> bool:
+        """Clear all cached icons from disk."""
+        try:
+            import shutil
+            
+            # Clear official icons cache
+            if self._cache_dir.exists():
+                shutil.rmtree(self._cache_dir)
+                self._cache_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Cleared official icons cache: {self._cache_dir}")
+            
+            # Clear yotoicons cache
+            if self._yotoicons_dir.exists():
+                shutil.rmtree(self._yotoicons_dir)
+                self._yotoicons_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Cleared yotoicons cache: {self._yotoicons_dir}")
+            
+            # Clear in-memory index
+            self._index = {}
+            self._index_built = False
+            
+            logger.info("Icon cache cleared")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to clear icon cache: {e}")
+            return False

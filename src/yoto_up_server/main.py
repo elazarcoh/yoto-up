@@ -133,7 +133,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(cards.router, prefix="/cards", tags=["Cards"])
-app.include_router(icons.router, prefix="/icons", tags=["Icons"])
+# app.include_router(icons.router, prefix="/icons", tags=["Icons"])  # DISABLED: Icons removed
 app.include_router(playlists.router, prefix="/playlists", tags=["Playlists"])
 app.include_router(upload.router, prefix="/upload", tags=["Upload"])
 

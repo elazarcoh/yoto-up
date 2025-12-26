@@ -50,7 +50,6 @@ from yoto_up_server.models import (
 )
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.components import ChapterItem
-from yoto_up_server.templates.icon_components import IconSidebarPartial
 from yoto_up_server.templates.playlist_detail_refactored import (
     EditControlsPartial,
     PlaylistDetailRefactored,
@@ -173,12 +172,14 @@ async def get_playlist_detail(
 
         if is_htmx_request:
             # Return just the partial for HTMX swaps
-            return render_partial(PlaylistDetailRefactored(card=card))
+            return render_partial(
+                PlaylistDetailRefactored(card=card, playlist_id=playlist_id)
+            )
         else:
             # Return full page for direct navigation
             return render_page(
                 title=f"{card.title or 'Playlist'} - Yoto Up",
-                content=PlaylistDetailRefactored(card=card),
+                content=PlaylistDetailRefactored(card=card, playlist_id=playlist_id),
                 request=request,
             )
 
@@ -234,7 +235,7 @@ async def create_playlist(
         # Create a new card via API
         card: Card = await yoto_client.create_card(Card(title=title))
 
-        return render_partial(PlaylistDetailPartial(card=card))
+        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.cardId))
 
     except Exception as e:
         logger.error(f"Failed to create playlist: {e}")
@@ -276,7 +277,7 @@ async def create_playlist_with_cover(
             # For now, just create the card without cover
             logger.info(f"Cover upload for playlist {card.cardId} not yet implemented")
 
-        return render_partial(PlaylistDetailPartial(card=card))
+        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.cardId))
 
     except Exception as e:
         logger.error(f"Failed to create playlist with cover: {e}")
@@ -304,10 +305,11 @@ async def update_chapter_icon(
         icon_id = payload.icon_id
         playlist_id = payload.playlist_id
 
-        if chapter_index is None or not icon_id:
-            raise HTTPException(
-                status_code=400, detail="chapter_index and icon_id are required"
-            )
+        if not icon_id:
+            raise HTTPException(status_code=400, detail="icon_id is required")
+
+        if chapter_index is None:
+            raise HTTPException(status_code=400, detail="chapter_index is required")
 
         logger.info(f"Updating chapter {chapter_index} icon to {icon_id}")
 
@@ -379,6 +381,154 @@ async def update_chapter_icon(
     except Exception as e:
         logger.error(f"Failed to update chapter icon: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/update-chapter-icon", response_class=HTMLResponse)
+async def update_chapter_icon_with_playlist_id(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    yoto_client: YotoClientDep,
+    icon_id: Annotated[str, Form(description="Icon ID to assign")] = "",
+    chapter_id: Annotated[
+        Optional[list[str]], Form(description="Chapter IDs from HTMX")
+    ] = None,
+    track_id: Annotated[
+        Optional[list[str]], Form(description="Track IDs from HTMX")
+    ] = None,
+):
+    """
+    Update chapter/track icons for a specific playlist via HTMX form.
+
+    Receives form data from HTMX form submission:
+    - icon_id: Icon ID to assign (from submit button value)
+    - chapter_ids: JSON object with "chapter_ids" key or comma-separated indices
+    - track_ids: JSON object with "track_ids" key or comma-separated indices
+
+    Returns empty HTML on success (hx-swap="none" doesn't change anything)
+    or error message on failure.
+    """
+    try:
+        logger.debug(
+            f"Icon assignment request: icon_id={icon_id}, chapter_id={chapter_id}, track_id={track_id}"
+        )
+
+        if not icon_id:
+            logger.error("icon_id is required")
+            return d.Div(classes="text-red-500 p-4")("Error: Icon ID is required")
+
+        # Parse chapter_id and track_id from HTMX form values
+        # HTMX sends multiple values as list: chapter_id=[0, 1, 2]
+        chapter_id_list = []
+        track_id_list = []
+
+        # Convert chapter_id strings to integers
+        if chapter_id:
+            try:
+                chapter_id_list = [int(x.strip()) for x in chapter_id if x.strip()]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse chapter_id: {chapter_id}, error: {e}")
+
+        # Convert track_id strings to integers
+        if track_id:
+            try:
+                track_id_list = [int(x.strip()) for x in track_id if x.strip()]
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse track_id: {track_id}, error: {e}")
+
+        logger.debug(
+            f"Parsed chapter_id_list={chapter_id_list}, track_id_list={track_id_list}"
+        )
+
+        if not chapter_id_list and not track_id_list:
+            logger.error("At least one chapter_id or track_id is required")
+            return d.Div(classes="text-red-500 p-4")(
+                "Error: No chapters or tracks selected"
+            )
+
+        logger.info(
+            f"Updating {len(chapter_id_list)} chapters and {len(track_id_list)} tracks with icon {icon_id} in playlist {playlist_id}"
+        )
+
+        # Format the icon field for Yoto API
+        icon_field = f"yoto:#{icon_id}"
+
+        # Fetch the card
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
+        if not card:
+            logger.error(f"Playlist {playlist_id} not found")
+            return d.Div(classes="text-red-500 p-4")("Error: Playlist not found")
+
+        # Update all specified chapters
+        if not hasattr(card, "content") or not card.content:
+            logger.error("Card has no content")
+            return d.Div(classes="text-red-500 p-4")("Error: Card has no content")
+
+        chapters = getattr(card.content, "chapters", []) or []
+
+        updated_count = 0
+
+        # Update chapters
+        for chapter_index in chapter_id_list:
+            if chapter_index >= len(chapters):
+                logger.warning(
+                    f"Chapter index {chapter_index} out of range (total: {len(chapters)})"
+                )
+                continue
+
+            chapter = chapters[chapter_index]
+
+            # Ensure chapter has a display object
+            if not hasattr(chapter, "display") or chapter.display is None:
+                from yoto_up.models import ChapterDisplay
+
+                chapter.display = ChapterDisplay()
+
+            # Update the icon
+            chapter.display.icon16x16 = icon_field
+            logger.info(f"Updated chapter {chapter_index} icon to {icon_field}")
+            updated_count += 1
+
+        # Update tracks if any (future feature)
+        # for now, just log them
+        if track_id_list:
+            logger.info(
+                f"Track icon assignment for tracks {track_id_list} not yet implemented"
+            )
+
+        # Save the card back to API
+        if updated_count > 0:
+            # Ensure createdByClientId is set (required by API)
+            if not card.createdByClientId:
+                # Use the yoto_client's config client_id if available
+                if hasattr(yoto_client, "config") and hasattr(
+                    yoto_client.config, "client_id"
+                ):
+                    card.createdByClientId = yoto_client.config.client_id
+                else:
+                    # Fallback to a default client ID
+                    card.createdByClientId = "yoto-up-server"
+
+            logger.info(
+                f"Before API update, chapter 0 icon: {chapters[0].display.icon16x16}"
+            )
+            updated_card = await yoto_client.update_card(card)
+            logger.info(
+                f"After API update, returned chapter 0 icon: {updated_card.content.chapters[0].display.icon16x16 if updated_card.content.chapters else 'NO CHAPTERS'}"
+            )
+            logger.info(
+                f"Successfully updated {updated_count} chapters in playlist {playlist_id}"
+            )
+
+        # Return empty response (HTMX with hx-swap="none" won't swap anything)
+        return ""
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Use .format() instead of f-string to avoid KeyError when error message contains braces
+        logger.error("Failed to update chapter icon: {}", str(e), exc_info=True)
+        error_msg = str(e).replace("<", "&lt;").replace(">", "&gt;")
+        return d.Div(classes="text-red-500 p-4")(f"Error: {error_msg}")
 
 
 @router.post("/reorder-chapters", response_class=JSONResponse)
@@ -464,16 +614,16 @@ async def delete_selected_chapters(
     try:
         # Parse form data to get selected chapter indices
         form_data = await request.form()
-        
+
         # Get all values with key 'chapter_id' - HTMX includes checked checkboxes with their name/value
         selected_indices = []
         for key, value in form_data.items():
-            if key == 'chapter_id':
+            if key == "chapter_id":
                 try:
                     selected_indices.append(int(value))
                 except (ValueError, TypeError):
                     continue
-        
+
         if not selected_indices:
             raise HTTPException(status_code=400, detail="No chapters selected")
 
@@ -492,17 +642,17 @@ async def delete_selected_chapters(
             raise HTTPException(status_code=400, detail="Card has no chapters")
 
         chapters = card.content.chapters
-        
+
         # Validate all indices
         for idx in selected_indices:
             if not isinstance(idx, int) or idx < 0 or idx >= len(chapters):
                 raise HTTPException(
                     status_code=400, detail=f"Invalid chapter index: {idx}"
                 )
-        
+
         # Sort indices in descending order to avoid shifting issues
         selected_indices_sorted = sorted(selected_indices, reverse=True)
-        
+
         # Delete chapters starting from the highest index
         for idx in selected_indices_sorted:
             chapters.pop(idx)
@@ -510,15 +660,31 @@ async def delete_selected_chapters(
         # Save the updated card
         await yoto_client.update_card(card)
 
-        logger.info(f"Successfully deleted {len(selected_indices)} chapters from playlist {playlist_id}")
+        logger.info(
+            f"Successfully deleted {len(selected_indices)} chapters from playlist {playlist_id}"
+        )
 
         # Return updated chapters list - just the <ul> element for HTMX to swap
         chapters_list = []
-        if hasattr(card, 'content') and card.content and hasattr(card.content, 'chapters') and card.content.chapters:
-            chapters_list = [ChapterItem(chapter=chapter, index=i, card_id=card.cardId) for i, chapter in enumerate(card.content.chapters)]
-        
-        chapters_ul = d.Ul(id="chapters-list", classes="divide-y divide-gray-100")(*chapters_list) if chapters_list else d.Div(classes="px-6 py-8 sm:px-8 text-center text-gray-500")("No items found.")
-        
+        if (
+            hasattr(card, "content")
+            and card.content
+            and hasattr(card.content, "chapters")
+            and card.content.chapters
+        ):
+            chapters_list = [
+                ChapterItem(chapter=chapter, index=i, card_id=card.cardId)
+                for i, chapter in enumerate(card.content.chapters)
+            ]
+
+        chapters_ul = (
+            d.Ul(id="chapters-list", classes="divide-y divide-gray-100")(*chapters_list)
+            if chapters_list
+            else d.Div(classes="px-6 py-8 sm:px-8 text-center text-gray-500")(
+                "No items found."
+            )
+        )
+
         return render_partial(chapters_ul)
     except HTTPException:
         raise
@@ -558,11 +724,13 @@ async def change_cover(
         import base64
 
         cover_base64 = base64.b64encode(cover_content).decode("utf-8")
-        
+
         if not hasattr(card, "metadata") or card.metadata is None:
             card.metadata = {}
 
-        card.metadata["cover_image"] = f"data:image/{cover.content_type};base64,{cover_base64}"
+        card.metadata["cover_image"] = (
+            f"data:image/{cover.content_type};base64,{cover_base64}"
+        )
 
         # Save the updated card
         await yoto_client.create_card(card)
@@ -570,7 +738,9 @@ async def change_cover(
         logger.info(f"Updated cover for playlist {playlist_id}")
 
         # Return updated detail
-        return render_partial(PlaylistDetailRefactored(card=card))
+        return render_partial(
+            PlaylistDetailRefactored(card=card, playlist_id=playlist_id)
+        )
 
     except HTTPException:
         raise
@@ -929,42 +1099,12 @@ async def get_json_modal(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{playlist_id}/icon-sidebar", response_class=HTMLResponse)
-async def get_icon_sidebar(
-    request: Request,
-    playlist_id: Annotated[str, Path()],
-    session_api: AuthenticatedSessionApiDep,
-    chapter_index: Annotated[
-        Optional[int], Query(description="Chapter index for single edit")
-    ] = None,
-    batch: Annotated[
-        bool, Query(description="Batch mode for multiple chapters")
-    ] = False,
-) -> str:
-    """
-    Get icon selection sidebar.
-
-    Returns icon sidebar partial for HTMX.
-    """
-    try:
-        # Render the icon sidebar component
-        sidebar = IconSidebarPartial(
-            playlist_id=playlist_id,
-            chapter_index=chapter_index,
-            batch_mode=batch
-        )
-        html = sidebar.render()
-        return render_partial(html)
-    except Exception as e:
-        logger.error(f"Error rendering icon sidebar: {e}", exc_info=True)
-        return f"<div class='px-6 py-4 text-red-500'>Error loading icon sidebar: {str(e)}</div>"
-
 @router.get("/{playlist_id}/test-endpoint", response_class=HTMLResponse)
 async def test_endpoint(
     playlist_id: Annotated[str, Path()],
 ) -> str:
     """Test endpoint to verify server reload."""
-    return "<div>TEST ENDPOINT WORKS 2025-01-20</div>"
+    return d.Div()("TEST ENDPOINT WORKS 2025-01-20")
 
 
 @router.delete(
@@ -1057,7 +1197,7 @@ async def stop_upload_session(
 
         # Mark session to stop
         upload_processing_service.stop_session(session_id)
-        
+
         # Mark all files as errored to update session status
         for file_status in session.files:
             upload_session_service.mark_file_error(

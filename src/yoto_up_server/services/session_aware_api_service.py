@@ -496,3 +496,72 @@ class SessionAwareApiService:
         """
         client = await self.get_client()
         return await client.delete_card(card_id)
+
+    async def get_public_icons(self, show_in_console: bool = True, refresh_cache: bool = False):
+        """
+        Get public (Yoto) icons.
+        
+        Args:
+            show_in_console: Whether to show in console
+            refresh_cache: Whether to refresh the cache
+            
+        Returns:
+            List of icon dictionaries
+        """
+        client = await self.get_client()
+        # Call the synchronous method from YotoApiClient's underlying API
+        if hasattr(client, 'api') and hasattr(client.api, 'get_public_icons'):
+            return client.api.get_public_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
+        return []
+
+    async def get_user_icons(self, show_in_console: bool = True, refresh_cache: bool = False):
+        """
+        Get user icons.
+        
+        Args:
+            show_in_console: Whether to show in console
+            refresh_cache: Whether to refresh the cache
+            
+        Returns:
+            List of icon dictionaries
+        """
+        client = await self.get_client()
+        # Call the synchronous method from YotoApiClient's underlying API
+        if hasattr(client, 'api') and hasattr(client.api, 'get_user_icons'):
+            return client.api.get_user_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
+        return []
+
+    async def search_cached_icons(self, query: str, fields: list = None, show_in_console: bool = True, include_yotoicons: bool = True):
+        """
+        Search cached icons.
+        
+        Args:
+            query: Search query
+            fields: Fields to search
+            show_in_console: Whether to show in console
+            include_yotoicons: Whether to include YotoIcons
+            
+        Returns:
+            List of matching icon dictionaries
+        """
+        client = await self.get_client()
+        # Call the synchronous method from YotoApiClient's underlying API
+        if hasattr(client, 'api') and hasattr(client.api, 'search_cached_icons'):
+            return client.api.search_cached_icons(query=query, fields=fields, show_in_console=show_in_console, include_yotoicons=include_yotoicons)
+        return []
+
+    async def get_icon_b64_data(self, icon_field: str):
+        """
+        Get icon data as base64.
+        
+        Args:
+            icon_field: Icon field (yoto:#<mediaId>)
+            
+        Returns:
+            Base64 encoded image data or None
+        """
+        client = await self.get_client()
+        # Call the synchronous method from YotoApiClient's underlying API
+        if hasattr(client, 'api') and hasattr(client.api, 'get_icon_b64_data'):
+            return client.api.get_icon_b64_data(icon_field)
+        return None

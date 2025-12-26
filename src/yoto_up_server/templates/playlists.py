@@ -248,9 +248,10 @@ class PlaylistCard(Component):
 class PlaylistDetailPartial(Component):
     """Partial for playlist details."""
     
-    def __init__(self, card: Card):
+    def __init__(self, card: Card, playlist_id: str = ""):
         super().__init__()
         self.card = card
+        self.playlist_id = playlist_id
     
     def render(self):
         title = self.card.title or "Untitled"
@@ -345,42 +346,13 @@ class PlaylistDetailPartial(Component):
                         ),
                     ),
                     d.Ul(id="chapters-list", classes="divide-y divide-gray-100")(
-                        *[ChapterItem(chapter=chapter, index=i, card_id=self.card.cardId) for i, chapter in enumerate(chapters)]
+                        *[ChapterItem(chapter=chapter, index=i, card_id=self.card.cardId, playlist_id=self.playlist_id) for i, chapter in enumerate(chapters)]
                     ) if chapters else d.Div(classes="px-6 py-8 sm:px-8 text-center text-gray-500")("No items found."),
                 ),
             ),
             
-            # Edit Icon Sidebar (hidden by default)
-            d.Div(id="icon-sidebar" , classes="hidden fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto")(
-                d.Div(classes="p-6 flex flex-col h-full")(
-                    d.Div(classes="flex justify-between items-center mb-4")(
-                        d.H3(classes="text-xl font-bold text-gray-900")("Edit Icons"),
-                        d.Button(
-                            classes="text-gray-500 hover:text-gray-700 text-2xl",
-                            onclick="closeIconSidebar()"
-                        )("✕"),
-                    ),
-                    d.Div(classes="mb-4 flex gap-2")(
-                        d.Input(
-                            type="text",
-                            id="icon-search",
-                            placeholder="Search icons...",
-                            classes="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                        ),
-                        d.Button(
-                            id="icon-search-btn",
-                            classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium",
-                            type="button"
-                        )("🔍 Search"),
-                    ),
-                    d.Div(id="icons-grid", classes="grid grid-cols-4 gap-2 flex-1 overflow-y-auto")(
-                        # Icons will be loaded dynamically
-                    ),
-                ),
-            ),
-            
             # Edit mode overlay
-            d.Div(id="edit-overlay", classes="hidden fixed inset-0 bg-black bg-opacity-50 z-40", onclick="if(sidebarOpen) closeIconSidebar();"),
+            d.Div(id="edit-overlay", classes="hidden fixed inset-0 bg-black bg-opacity-50 z-40"),
             
             # Upload modal
             d.Div(id="upload-modal", classes="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4")(
