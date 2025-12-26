@@ -20,6 +20,7 @@ app = typer.Typer(help="Yoto Up Server CLI")
 
 def open_browser(url: str, delay: float = 1.0):
     """Open the browser after a delay to allow the server to start."""
+
     def _open():
         time.sleep(delay)
         try:
@@ -27,7 +28,7 @@ def open_browser(url: str, delay: float = 1.0):
             logger.info(f"Opened browser at {url}")
         except Exception as e:
             logger.warning(f"Failed to open browser: {e}")
-    
+
     thread = threading.Thread(target=_open, daemon=True)
     thread.start()
 
@@ -39,40 +40,40 @@ def main(
     reload: bool = typer.Option(True, help="Enable auto-reload on code changes"),
     no_browser: bool = typer.Option(False, help="Don't automatically open browser"),
     log_level: str = typer.Option("info", help="Logging level"),
-    debug: bool = typer.Option(False, help="Enable debug mode (debug logging + debug output directory)"),
+    debug: bool = typer.Option(
+        False, help="Enable debug mode (debug logging + debug output directory)"
+    ),
 ):
     """Start the Yoto Up Server."""
-    
+
     url = f"http://{host}:{port}"
-    
-    # Configure logging first
-    configure_logging(log_level=log_level, debug=debug)
-    
+
     # Determine actual log level for uvicorn
     actual_log_level = log_level
     if debug:
         actual_log_level = "debug"
-    
+
     # Open browser if requested
     if not no_browser:
         open_browser(url, delay=1.5)
-    
+
     logger.info(f"Starting Yoto Up Server at {url}")
-    
+
     if debug:
         logger.info("Debug mode enabled")
-    
+
     # Run the server with debug mode in environment
     import os
+
     if debug:
         os.environ["YOTO_UP_DEBUG"] = "true"
         os.environ["YOTO_UP_DEBUG_DIR"] = "./debug"
-    
+
     # Determine actual log level for uvicorn
     actual_log_level = log_level
     if debug:
         actual_log_level = "debug"
-    
+
     # Run the server
     uvicorn.run(
         "yoto_up_server.main:app",

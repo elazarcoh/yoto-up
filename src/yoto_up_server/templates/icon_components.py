@@ -280,3 +280,35 @@ class LazyIconImg(Component):
             hx_swap="outerHTML",
             classes="inline-block",
         )(loading_placeholder)
+
+
+class LoadingIconIndicator(Component):
+    """Indicator component for loading icon states (used with HTMX)."""
+
+    def __init__(self, media_id: str, status: str = "loading"):
+        super().__init__()
+        self.media_id = media_id
+        self.status = status  # "loading", "error", "not_found"
+
+    def render(self):
+        if self.status == "loading":
+            return d.Div(
+                classes="w-6 h-6 flex items-center justify-center",
+                title="Loading icon...",
+            )(
+                d.Div(
+                    classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
+                )
+            )
+        elif self.status == "error":
+            return d.Div(
+                classes="w-6 h-6 flex items-center justify-center text-red-500",
+                title="Error loading icon",
+            )("⚠️")
+        elif self.status == "not_found":
+            return d.Div(
+                classes="w-6 h-6 flex items-center justify-center text-gray-400",
+                title="Icon not found",
+            )("❓")
+        else:
+            return d.Div()("")

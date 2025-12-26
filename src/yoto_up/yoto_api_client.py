@@ -33,6 +33,7 @@ from yoto_up.models import (
     TrackDisplay,
     ChapterDisplay,
 )
+from yoto_up_server.models import DisplayIconManifest
 
 
 # ============================================================================
@@ -1155,11 +1156,11 @@ class YotoApiClient:
     ) -> Track:
         """
         Create a Track object from transcoded audio response.
-        
+
         Args:
             response: TranscodedAudioResponse from upload
             track_details: Optional overrides for track properties
-            
+
         Returns:
             Track object
         """
@@ -1167,7 +1168,7 @@ class YotoApiClient:
         title = "Unknown Track"
         if info and info.metadata and info.metadata.title:
             title = info.metadata.title
-            
+
         track_kwargs = {
             "key": "01",
             "title": title,
@@ -1178,12 +1179,14 @@ class YotoApiClient:
             "format": info.format if info else None,
             "type": "audio",
             "overlayLabel": "1",
-            "display": TrackDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            "display": TrackDisplay(
+                icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
+            ),
         }
-        
+
         if track_details:
             track_kwargs.update(track_details)
-            
+
         return Track(**track_kwargs)
 
     def get_chapter_from_transcoded_audio(
@@ -1193,29 +1196,45 @@ class YotoApiClient:
     ) -> Chapter:
         """
         Create a Chapter object from transcoded audio response.
-        
+
         Args:
             response: TranscodedAudioResponse from upload
             chapter_details: Optional overrides for chapter properties
-            
+
         Returns:
             Chapter object
         """
         track = self.get_track_from_transcoded_audio(response)
-        
+
         title = track.title
         if chapter_details and "title" in chapter_details:
             title = chapter_details["title"]
-            
+
         chapter_kwargs = {
             "key": "01",
             "title": title,
             "overlayLabel": "1",
             "tracks": [track],
-            "display": ChapterDisplay(icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"),
+            "display": ChapterDisplay(
+                icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
+            ),
         }
-        
+
         if chapter_details:
             chapter_kwargs.update(chapter_details)
-            
+
         return Chapter(**chapter_kwargs)
+
+    async def get_public_icons(self):
+        """
+        Get public icons from the API.
+        """
+        response = await self._request("GET", "/media/displayIcons/user/yoto")
+        return DisplayIconManifest.model_validate(response.json())
+
+    async def get_user_icons(self):
+        """
+        Get user-uploaded icons from the API.
+        """
+        response = await self._request("GET", "/media/displayIcons/user/me")
+        return DisplayIconManifest.model_validate(response.json())

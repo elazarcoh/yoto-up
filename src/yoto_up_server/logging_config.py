@@ -60,7 +60,7 @@ class EndpointsFilter:
         """
         self.excluded_prefixes = excluded_prefixes
 
-    def __call__(self, record: dict) -> bool:
+    def __call__(self, record) -> bool:
         """
         Filter function for loguru.
 
@@ -100,16 +100,19 @@ def configure_logging(log_level: str = "info", debug: bool = False):
         actual_level = "debug"
 
     # Create filter for polling endpoints
-    # polling_filter = EndpointsFilter(["/upload-sessions"])
+    polling_filter = EndpointsFilter(["/upload-sessions"])
 
     # Add stdout handler with custom format
     logger.remove()
     logger.add(
         sys.stdout,
-        format="<level>{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}</level>",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{module}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level>",
         level='INFO',
         colorize=True,
-        # filter=polling_filter,
+        filter=polling_filter,
     )
 
     logger.info(f"Logging configured at level: {actual_level.upper()}")

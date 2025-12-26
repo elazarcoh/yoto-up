@@ -94,6 +94,11 @@ cards = await yoto_client.get_my_content()  # Gets current session, creates clie
 
 ### Python/Code Style
 - **Type Hints**: Full type hints required (pydantic models, Optional, Union, etc.)
+- **Type Hints**: Always use full typing in function and method signatures (include parameter and return types). For type-only imports that could cause circular dependencies, use `from typing import TYPE_CHECKING` and import those types inside an `if TYPE_CHECKING:` block, or use forward-reference string annotations where appropriate.
+  * NEVER use `Any`, `object`, or untyped parameters/returns.
+  * NEVER disable type checking with `# type: ignore`.
+  * NEVER use `dict`, `list`, or other built-in types without generics (e.g., use `Dict[str, int]` instead of `dict`).
+- **Pydantic Models**: Use pydantic models for all data structures (e.g., API responses, session payloads)
 - **Async/Await**: All I/O operations are async (FastAPI + httpx)
 - **Logging**: Use `from loguru import logger` → `logger.info(msg)`, `logger.error(msg)`
 - **Error Handling**: `AuthenticationError` for auth failures, caught by middleware

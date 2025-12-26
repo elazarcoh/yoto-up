@@ -96,7 +96,7 @@ class ChapterItem(Component):
                         id=f"chapter-placeholder-{self.index}",
                         classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600",
                     )(
-                        LazyIconImg(icon_id=self.chapter.display.icon16x16)
+                        LazyIconImg(icon_id=self.chapter.display.icon16x16.replace('#', '%23'))
                         if self.chapter.display and self.chapter.display.icon16x16
                         else d.Span()(str(self.index + 1))
                     ),

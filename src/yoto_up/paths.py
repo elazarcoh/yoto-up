@@ -2,6 +2,9 @@ from pathlib import Path
 import os
 import json
 from typing import Any
+import dotenv
+dotenv.load_dotenv()
+
 try:
     from platformdirs import user_config_dir, user_data_dir, user_cache_dir
 except Exception:

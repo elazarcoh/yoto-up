@@ -20,6 +20,7 @@ from pydom.component import Component
 from dependency_injector.wiring import Provide
 
 from yoto_up_server.container import Container
+from yoto_up_server.logging_config import configure_logging
 from yoto_up_server.routers import auth, cards, icons, playlists, upload
 from yoto_up_server.templates.base import render_page
 from yoto_up_server.templates.home import HomePage
@@ -38,6 +39,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown."""
     # Load environment variables from .env file
     dotenv.load_dotenv()
+
+    # Configure logging first
+
+    configure_logging()
 
     # Initialize the DI container
     container = Container()

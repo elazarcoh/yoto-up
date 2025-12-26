@@ -182,7 +182,7 @@ class DisplayIcon(BaseModel):
     new: Optional[bool] = Field(None, description="Whether this is a new icon")
     public: bool = Field(description="Whether this icon is publicly available")
     publicTags: Optional[List[str]] = Field(default_factory=list, description="Tags for public discovery")
-    title: str = Field(description="Human-readable title/name of the icon")
+    title: str | None = Field(default=None, description="Human-readable title/name of the icon")
     url: str = Field(description="Direct URL to the icon image")
     userId: str = Field(description="User ID of the icon owner (usually 'yoto' for official)")
 
