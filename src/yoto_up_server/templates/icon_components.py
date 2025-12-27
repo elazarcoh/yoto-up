@@ -79,7 +79,8 @@ class IconSidebarPartial(Component):
         return d.Form(
             id="icon-assignment-form",
             hx_post=f"/playlists/{self.playlist_id}/update-chapter-icon",
-            hx_swap="none",
+            hx_target="#playlist-detail",
+            hx_swap="outerHTML",
             classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto flex flex-col",
         )(
             # Hidden inputs for chapter and track IDs (will be sent as form data)

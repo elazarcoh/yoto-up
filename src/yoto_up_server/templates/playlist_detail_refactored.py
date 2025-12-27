@@ -270,6 +270,16 @@ class PlaylistDetailRefactored(Component):
             
             # JSON modal placeholder (loaded via HTMX when needed)
             d.Div(id="json-modal-container")(),
+
+            # Icon Sidebar Container
+            d.Div(id="icon-sidebar-container"),
+
+            # Overlay for sidebar
+            d.Div(
+                id="edit-overlay",
+                classes="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity hidden z-40",
+                onclick="closeIconSidebar()",
+            ),
         )
     
     def _render_header(self, title: str, description: str, cover_url: str):
@@ -400,7 +410,17 @@ class EditControlsPartial(Component):
                     **{"hx-on:click": "document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.checked = !cb.checked)"},
                     title="Invert selection"
                 )("⟲ Invert"),
-                
+
+                # Set Icon for selected
+                d.Button(
+                    classes="px-3 py-1 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600 transition-colors",
+                    hx_post=f"/playlists/{self.playlist_id}/icon-sidebar-batch",
+                    hx_include="[data-chapter-id]:checked",
+                    hx_target="#icon-sidebar-container",
+                    hx_swap="innerHTML",
+                    title="Set icon for selected items"
+                )("🖼️ Set Icon"),
+
                 # Delete selected
                 d.Button(
                     classes="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors",

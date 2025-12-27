@@ -50,6 +50,10 @@ from yoto_up_server.models import (
 )
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.components import ChapterItem
+from yoto_up_server.templates.icon_components import (
+    IconGridPartial,
+    IconSidebarPartial,
+)
 from yoto_up_server.templates.playlist_detail_refactored import (
     EditControlsPartial,
     PlaylistDetailRefactored,
@@ -282,6 +286,95 @@ async def create_playlist_with_cover(
     except Exception as e:
         logger.error(f"Failed to create playlist with cover: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/icon-sidebar", response_class=HTMLResponse)
+async def get_icon_sidebar(
+    playlist_id: str,
+    request: Request,
+    chapter_id: Optional[int] = Query(None),
+    track_id: Optional[int] = Query(None),
+) -> str:
+    """Serve the icon selection sidebar."""
+    chapter_ids = [chapter_id] if chapter_id is not None else []
+    track_ids = [track_id] if track_id is not None else []
+
+    return render_partial(
+        IconSidebarPartial(
+            playlist_id=playlist_id,
+            chapter_ids=chapter_ids,
+            track_ids=track_ids,
+        )
+    )
+
+
+@router.post("/{playlist_id}/icon-sidebar-batch", response_class=HTMLResponse)
+async def get_icon_sidebar_batch(
+    playlist_id: str,
+    request: Request,
+    chapter_id: List[int] = Form(default=[]),
+) -> str:
+    """Serve the icon selection sidebar for batch selection."""
+    return render_partial(
+        IconSidebarPartial(
+            playlist_id=playlist_id,
+            chapter_ids=chapter_id,
+        )
+    )
+
+
+@router.post("/{playlist_id}/update-chapter-icon", response_class=HTMLResponse)
+async def update_chapter_icon_batch(
+    playlist_id: str,
+    request: Request,
+    yoto_client: YotoClientDep,
+    icon_id: str = Form(...),
+    chapter_id: List[int] = Form(default=[]),
+    track_id: List[int] = Form(default=[]),
+) -> str:
+    """
+    Update icons for multiple chapters/tracks.
+    """
+    if not icon_id:
+        raise HTTPException(status_code=400, detail="icon_id is required")
+
+    # Fetch the card
+    card: Optional[Card] = await yoto_client.get_card(playlist_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Playlist not found")
+
+    if not hasattr(card, "content") or not card.content:
+        raise HTTPException(status_code=400, detail="Card has no content")
+
+    chapters = getattr(card.content, "chapters", []) or []
+
+    icon_val = icon_id
+    if not icon_val.startswith("yoto:#"):
+        icon_val = f"yoto:#{icon_val}"
+
+    updated = False
+
+    # Update chapters
+    for idx in chapter_id:
+        if 0 <= idx < len(chapters):
+            chapter = chapters[idx]
+            # Ensure display object exists
+            if not hasattr(chapter, "display") or not chapter.display:
+                from yoto_up.models import Display
+                chapter.display = Display()
+
+            chapter.display.icon16x16 = icon_val
+            chapter.display.icon32x32 = icon_val
+            updated = True
+
+    if updated:
+        # Save the card
+        await yoto_client.update_card(card)
+
+    # Return updated detail view
+    return render_partial(
+        PlaylistDetailRefactored(card=card, playlist_id=card.cardId)
+    )
 
 
 @router.post("/update-icon", response_class=JSONResponse)

@@ -92,9 +92,13 @@ class ChapterItem(Component):
                         else "event.preventDefault()",
                         type="button",
                     )(f"{'▼' if has_tracks else '▶'}"),
-                    d.Div(
+                    d.Button(
+                        type="button",
                         id=f"chapter-placeholder-{self.index}",
-                        classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600",
+                        classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600 hover:ring-2 hover:ring-indigo-500 cursor-pointer p-0 border-0 overflow-hidden",
+                        hx_get=f"/playlists/{self.playlist_id}/icon-sidebar?chapter_id={self.index}",
+                        hx_target="#icon-sidebar-container",
+                        hx_swap="innerHTML",
                     )(
                         LazyIconImg(icon_id=self.chapter.display.icon16x16.replace('#', '%23'))
                         if self.chapter.display and self.chapter.display.icon16x16

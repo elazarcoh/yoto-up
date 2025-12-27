@@ -7,53 +7,41 @@ Fetches public icons from Yoto API manifest and downloads them on demand.
 
 from __future__ import annotations
 
+import base64
 from asyncio import Future, Lock
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Annotated, Dict, List, Optional
 
 import httpx
 from loguru import logger
 from pydantic import (
-    Base64Bytes,
     BaseModel,
     EncodedBytes,
     EncoderProtocol,
-    field_serializer,
 )
 
 from yoto_up import paths
 from yoto_up.yoto_api_client import YotoApiClient
-import base64
-
 
 if TYPE_CHECKING:
     from yoto_up_server.models import DisplayIcon, DisplayIconManifest
 
 
-class IconBytesEncoder(EncoderProtocol):
-    @classmethod
-    def decode(cls, data: bytes) -> bytes:
-        return data
-
-    @classmethod
-    def encode(cls, value: bytes) -> bytes:
-        if value.startswith(b"\x89PNG"):
-            mime_type = "image/png"
-        elif value.startswith(b"\xff\xd8\xff"):
-            mime_type = "image/jpeg"
-        elif value.startswith(b"GIF"):
-            mime_type = "image/gif"
-        elif value.startswith(b"WEBP"):
-            mime_type = "image/webp"
-        else:
-            mime_type = "image/png"  # default
-        base64_data = base64.b64encode(value).decode("utf-8")
-        src = f"data:{mime_type};base64,{base64_data}"
-        return src.encode("utf-8")
-
-    @classmethod
-    def get_json_format(cls) -> str:
-        return "base64"
+def icon_bytes_to_data_url(value: bytes) -> str:
+    if value.startswith(b"\x89PNG"):
+        mime_type = "image/png"
+    elif value.startswith(b"\xff\xd8\xff"):
+        mime_type = "image/jpeg"
+    elif value.startswith(b"GIF"):
+        mime_type = "image/gif"
+    elif value.startswith(b"WEBP"):
+        mime_type = "image/webp"
+    else:
+        mime_type = "image/png"  # default
+    base64_data = base64.b64encode(value).decode("utf-8")
+    src = f"data:{mime_type};base64,{base64_data}"
+    return src
 
 
 class IconEntry(BaseModel):
@@ -61,7 +49,7 @@ class IconEntry(BaseModel):
     path: str
     source: str
     name: str
-    data: Annotated[bytes, EncodedBytes(encoder=IconBytesEncoder)]
+    data: str
     tags: List[str] = []
     keywords: List[str] = []
 
@@ -100,39 +88,33 @@ class IconIndex:
 
 
 class IconIndices:
+    class Source(str, Enum):
+        OFFICIAL = "official"
+        YOTOICONS = "yotoicons"
+
     def __init__(self) -> None:
         self.official = IconIndex()
         self.yotoicons = IconIndex()
-        self.local = IconIndex()
 
     @property
     def built(self) -> bool:
-        return self.official.built or self.yotoicons.built or self.local.built
+        return self.official.built or self.yotoicons.built
 
-    def build_all(
-        self, official_dir: Path, yotoicons_dir: Path, local_dir: Path
-    ) -> None:
+    def build_all(self, official_dir: Path, yotoicons_dir: Path) -> None:
         self.official.clear()
         self.yotoicons.clear()
-        self.local.clear()
         self.official.build_from_dir(official_dir, "official")
         self.yotoicons.build_from_dir(yotoicons_dir, "yotoicons")
-        self.local.build_from_dir(local_dir, "local")
 
     def clear(self) -> None:
         self.official.clear()
         self.yotoicons.clear()
-        self.local.clear()
 
     def all_entries(self) -> List[IconEntry]:
-        return (
-            self.official.all_entries()
-            + self.yotoicons.all_entries()
-            + self.local.all_entries()
-        )
+        return self.official.all_entries() + self.yotoicons.all_entries()
 
     def get(self, icon_id: str) -> Optional[IconEntry]:
-        for idx in (self.local, self.official, self.yotoicons):
+        for idx in (self.official, self.yotoicons):
             v = idx.get(icon_id)
             if v:
                 return v
@@ -150,14 +132,12 @@ class IconService:
     """
 
     def __init__(self) -> None:
-        self._cache_dir = paths.OFFICIAL_ICON_CACHE_DIR
+        self._yoto_cache_dir = paths.OFFICIAL_ICON_CACHE_DIR
         self._yotoicons_dir = paths.YOTOICONS_CACHE_DIR
-        self._user_icons_dir = paths.USER_ICONS_DIR
 
         # Ensure directories exist
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        self._yoto_cache_dir.mkdir(parents=True, exist_ok=True)
         self._yotoicons_dir.mkdir(parents=True, exist_ok=True)
-        self._user_icons_dir.mkdir(parents=True, exist_ok=True)
 
         # In-memory indices (official, yotoicons, local)
         self._indices = IconIndices()
@@ -174,7 +154,7 @@ class IconService:
         self._running_requests_lock = Lock()
 
         # In-memory cache for downloaded/loaded icons (bytes)
-        self._icon_bytes_cache: Dict[str, bytes] = {}
+        self._icon_cache: Dict[str, str] = {}
 
     async def initialize(self) -> None:
         """Initialize the service (public manifest will be fetched on demand with auth)."""
@@ -268,9 +248,7 @@ class IconService:
         if self._indices.built:
             return
 
-        self._indices.build_all(
-            self._cache_dir, self._yotoicons_dir, self._user_icons_dir
-        )
+        self._indices.build_all(self._yoto_cache_dir, self._yotoicons_dir)
 
         logger.info(f"Local icon index built: {len(self._indices.all_entries())} icons")
 
@@ -278,7 +256,7 @@ class IconService:
         self,
         media_id: str,
         api_client: YotoApiClient,
-    ) -> Optional[bytes]:
+    ) -> Optional[str]:
         """
         Get icon bytes by media ID from the public manifest.
 
@@ -296,15 +274,15 @@ class IconService:
             media_id = media_id.removeprefix("yoto:#")
 
         # Check if we have it cached in memory
-        if media_id in self._icon_bytes_cache:
+        if media_id in self._icon_cache:
             logger.debug(f"Icon {media_id} found in memory cache")
-            return self._icon_bytes_cache[media_id]
+            return self._icon_cache[media_id]
 
         # Check if we have it in local indices
         entry = self._indices.get(media_id)
         if entry:
             logger.debug(f"Icon {media_id} found in local index")
-            self._icon_bytes_cache[media_id] = entry.data
+            self._icon_cache[media_id] = entry.data
             return entry.data
 
         # Ensure manifests are loaded (lazy fetch on first call)
@@ -318,11 +296,11 @@ class IconService:
 
         if media_id in self._user_manifest_by_media_id:
             icon_def = self._user_manifest_by_media_id[media_id]
-            target_dir = self._user_icons_dir
-            source = "local"
+            target_dir = self._yoto_cache_dir
+            source = "user"
         elif media_id in self._public_manifest_by_media_id:
             icon_def = self._public_manifest_by_media_id[media_id]
-            target_dir = self._cache_dir
+            target_dir = self._yoto_cache_dir
             source = "official"
         else:
             logger.warning(f"Icon {media_id} not found in any manifest")
@@ -334,7 +312,7 @@ class IconService:
                 logger.debug(f"Waiting for ongoing download of icon {media_id}")
                 future = self._running_requests[icon_def.url]
                 await future
-                return self._icon_bytes_cache.get(media_id)
+                return self._icon_cache.get(media_id)
             else:
                 self._running_requests[icon_def.url] = Future()
 
@@ -346,10 +324,11 @@ class IconService:
                 response.raise_for_status()
                 icon_bytes = response.content
 
-            self._icon_bytes_cache[media_id] = icon_bytes
+            as_url = icon_bytes_to_data_url(icon_bytes)
+            self._icon_cache[media_id] = as_url
 
             # Save to disk
-            self._save_icon_to_disk(media_id, icon_bytes, icon_def, target_dir, source)
+            self._save_icon_to_disk(media_id, as_url, icon_def, target_dir, source)
 
             self._running_requests[icon_def.url].set_result(True)
             del self._running_requests[icon_def.url]
@@ -357,7 +336,7 @@ class IconService:
             logger.info(
                 f"Downloaded and cached icon {media_id}: {len(icon_bytes)} bytes"
             )
-            return icon_bytes
+            return as_url
 
         except Exception as e:
             logger.error(f"Error downloading icon {media_id}: {e}")
@@ -366,10 +345,56 @@ class IconService:
                 del self._running_requests[icon_def.url]
             return None
 
+    async def get_icons(
+        self,
+        api_client: YotoApiClient,
+        source: str = "all",
+        query: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict]:
+        """
+        Get a list of icons, optionally filtered by source and query.
+        """
+        await self._ensure_public_icons_manifest(api_client)
+        await self._ensure_user_icon_manifest(api_client)
+
+        icons = []
+
+        if source in ["user", "all"]:
+            if self._user_manifest:
+                for icon in self._user_manifest.displayIcons:
+                    icons.append(
+                        {
+                            "id": icon.mediaId,
+                            "title": icon.title or icon.displayIconId,
+                            "thumbnail": icon.url,  # Use URL directly for now
+                            "source": "user",
+                        }
+                    )
+
+        if source in ["yotoicons", "official", "all"]:
+            if self._public_manifest:
+                for icon in self._public_manifest.displayIcons:
+                    icons.append(
+                        {
+                            "id": icon.mediaId,
+                            "title": icon.title or icon.displayIconId,
+                            "thumbnail": icon.url,
+                            "source": "official",
+                        }
+                    )
+
+        # Filter by query
+        if query:
+            query = query.lower()
+            icons = [icon for icon in icons if query in (icon["title"] or "").lower()]
+
+        return icons[:limit]
+
     def _save_icon_to_disk(
         self,
         media_id: str,
-        data: bytes,
+        data: str,
         icon_def: DisplayIcon,
         target_dir: Path,
         source: str,
@@ -392,10 +417,7 @@ class IconService:
                 f.write(entry.model_dump_json(indent=2))
 
             # Update index
-            if source == "official":
-                self._indices.official.add_entry(entry)
-            elif source == "local":
-                self._indices.local.add_entry(entry)
+            self._indices.official.add_entry(entry)
 
             logger.debug(f"Saved icon {media_id} to {file_path}")
         except Exception as e:
