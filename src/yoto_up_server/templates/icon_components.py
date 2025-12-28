@@ -45,21 +45,12 @@ class IconGridPartial(Component):
         icon_id = icon.mediaId
         title = icon.title or "Untitled"
 
-        # If it's a YotoIcon, use the URL directly to avoid provisioning on view
-        if icon_id.startswith("yotoicons:") and icon.url:
-             img_component = d.Img(
-                src=icon.url,
-                alt=title,
-                title=title,
-                classes="w-full h-full object-cover rounded",
-                loading="lazy"
-            )
-        else:
-            img_component = LazyIconImg(
-                icon_id=icon_id,
-                title=title,
-                classes="w-full h-full object-cover rounded",
-            )
+        # Use lazy loading for all icons (official, user, and yotoicons)
+        img_component = LazyIconImg(
+            icon_id=icon_id,
+            title=title,
+            classes="w-full h-full object-cover rounded",
+        )
 
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",

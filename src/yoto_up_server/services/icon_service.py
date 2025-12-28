@@ -26,6 +26,7 @@ from selectolax.lexbor import LexborHTMLParser
 from yoto_up import paths
 from yoto_up.yoto_api_client import YotoApiClient
 from yoto_up_server.services.icon_search_service import IconSearchService, SearchSource
+from yoto_up_server.utils.sanitation import sanitize_filename
 
 if TYPE_CHECKING:
     from yoto_up_server.models import DisplayIcon, DisplayIconManifest
@@ -400,27 +401,64 @@ class IconService:
         api_client: YotoApiClient,
     ) -> Optional[str]:
         """
-        Get icon bytes by media ID from the public manifest.
+        Get icon by media ID from the public manifest or yotoicons.com.
 
         Lazily fetches the public manifest on first call using authenticated API.
-        Downloads the icon from the manifest URL on demand.
+        Downloads the icon from the manifest URL or yotoicons.com on demand.
+
+        For yotoicons: IDs, downloads from yotoicons.com and caches locally.
 
         Args:
             media_id: The media ID from DisplayIcon.mediaId
             api_client: YotoApiClient instance (required for first manifest fetch)
 
         Returns:
-            Icon image bytes, or None if not found
+            Icon data URL (base64), or None if not found
         """
+        # Handle yotoicons caching (download and cache from yotoicons.com)
+        if media_id.startswith("yotoicons:"):
+            # Check if already cached in memory
+            if media_id in self._icon_cache:
+                logger.debug(f"YotoIcon {media_id} found in memory cache")
+                return self._icon_cache[media_id]
+
+            # Check if in disk cache (indices already loaded)
+            entry = self._indices.get(media_id)
+            if entry:
+                logger.debug(f"YotoIcon {media_id} found in disk cache")
+                self._icon_cache[media_id] = entry.data
+                return entry.data
+
+            # Try to get from search service cache (which has the URL)
+            self._initialize_search_service()
+            if self._search_service and media_id in self._search_service._yotoicons_cache:
+                icon_def = self._search_service._yotoicons_cache[media_id]
+                logger.debug(f"Found YotoIcon {media_id} in search cache, downloading from {icon_def.url}")
+                
+                # Download from the URL
+                try:
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.get(icon_def.url)
+                        response.raise_for_status()
+                        icon_bytes = response.content
+
+                    as_url = icon_bytes_to_data_url(icon_bytes)
+                    self._icon_cache[media_id] = as_url
+
+                    # Save to disk cache for future use
+                    self._save_icon_to_disk(media_id, as_url, icon_def, self._yotoicons_dir, "yotoicons")
+
+                    logger.info(f"Downloaded and cached YotoIcon {media_id}: {len(icon_bytes)} bytes")
+                    return as_url
+                except Exception as e:
+                    logger.error(f"Error downloading YotoIcon {media_id}: {e}")
+                    return None
+
+            logger.warning(f"YotoIcon {media_id} not found in cache or search service")
+            return None
+
         if media_id.startswith("yoto:#"):
             media_id = media_id.removeprefix("yoto:#")
-
-        # Handle yotoicons provisioning
-        if media_id.startswith("yotoicons:"):
-            official_id = await self._provision_yotoicon_id(media_id, api_client)
-            if official_id:
-                return await self.get_icon_by_media_id(official_id, api_client)
-            return None
 
         # Check if we have it cached in memory
         if media_id in self._icon_cache:
@@ -607,7 +645,7 @@ class IconService:
                     public=True,
                     publicTags=res.tags,
                     title=f"{res.category} by {res.author}",
-                    url=res.img_url,
+                    url=res.img_url,  # Will be cached lazily when requested
                     userId="yotoicons",
                     new=False,
                 )
@@ -728,7 +766,7 @@ class IconService:
         source: str,
     ) -> None:
         try:
-            filename = f"{media_id}.json"
+            filename = f"{sanitize_filename(media_id)}.json"
             file_path = target_dir / filename
 
             entry = IconEntry(
