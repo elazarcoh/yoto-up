@@ -48,11 +48,6 @@ def main(
 
     url = f"http://{host}:{port}"
 
-    # Determine actual log level for uvicorn
-    actual_log_level = log_level
-    if debug:
-        actual_log_level = "debug"
-
     # Open browser if requested
     if not no_browser:
         open_browser(url, delay=1.5)
@@ -80,7 +75,7 @@ def main(
         host=host,
         port=port,
         reload=reload,
-        # log_level=actual_log_level,
+        log_level=actual_log_level,
     )
 
 

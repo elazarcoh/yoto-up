@@ -82,6 +82,8 @@ def configure_logging(log_level: str = "info", debug: bool = False):
         log_level: Logging level (debug, info, warning, error, critical, trace)
         debug: Whether debug mode is enabled
     """
+    intercept_handler = InterceptHandler()
+    logging.basicConfig(handlers=[intercept_handler], level=logging.NOTSET)
     loggers = (
         logging.getLogger(name)
         for name in logging.root.manager.loggerDict
@@ -91,7 +93,6 @@ def configure_logging(log_level: str = "info", debug: bool = False):
         uvicorn_logger.handlers = []
 
     # change handler for default uvicorn logger
-    intercept_handler = InterceptHandler()
     logging.getLogger("uvicorn").handlers = [intercept_handler]
 
     # Determine actual log level

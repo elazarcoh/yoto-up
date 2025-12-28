@@ -167,6 +167,7 @@ class UploadProcessingService:
                 future = self._thread_pool.submit(
                     self._perform_batch_normalization, session
                 )
+                # wait for completion without blocking other tasks
                 future.result()
             except Exception as e:
                 logger.error(f"Batch normalization failed: {e}")
@@ -281,8 +282,6 @@ class UploadProcessingService:
                     session_id, file_status.file_id, "normalizing"
                 )
                 logger.info(f"Normalizing file {input_path.name} (parallel mode)")
-                # SLEEP FOR TESTING - Remove later
-                time.sleep(5)
                 normalized_paths = self._audio_processor.normalize(
                     input_paths=[str(input_path)],
                     output_dir=str(input_path.parent),
@@ -302,8 +301,6 @@ class UploadProcessingService:
             self._upload_session_service.mark_file_processing(
                 session_id, file_status.file_id, "analyzing"
             )
-            # SLEEP FOR TESTING - Remove later
-            time.sleep(3)
 
             # Placeholder for analysis
             # if session.analyze_intro_outro:
@@ -317,8 +314,6 @@ class UploadProcessingService:
             self._upload_session_service.mark_file_processing(
                 session_id, file_status.file_id, "uploading_to_api"
             )
-            # SLEEP FOR TESTING - Remove later
-            time.sleep(5)
 
             transcoded = self._upload_file_to_yoto(input_path)
 
@@ -427,6 +422,8 @@ class UploadProcessingService:
                     current_keys = {chapter.key for chapter in card.content.chapters}
                     while str(key) in current_keys:
                         key += 1
+                    for idx, track in enumerate(new_tracks):
+                        track.key = str(idx)
                     chapter = Chapter(
                         title="New Uploads",  # TODO: Maybe use date or something?
                         tracks=new_tracks,

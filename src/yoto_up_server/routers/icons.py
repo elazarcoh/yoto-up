@@ -7,7 +7,7 @@ Downloads icons from Yoto API on demand using the public manifest.
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
-from typing import Optional
+from typing import Literal, Optional
 from pydom import html as d
 from loguru import logger
 
@@ -26,12 +26,18 @@ router = APIRouter(prefix="/icons", tags=["icons"])
 async def get_icons_grid(
     icon_service: IconServiceDep,
     api_dep: YotoClientDep,
-    source: str = Query("user", description="Icon source: user, yotoicons, or all"),
+    source: Literal["user", "official"] = Query(
+        description="Icon source: user, official"
+    ),
     query: Optional[str] = Query(None, description="Search query"),
     limit: int = Query(100, description="Max number of icons"),
-) -> str:
+):
     """
     Get a grid of icons for selection.
+
+    Sources:
+    - user: User's uploaded icons
+    - official: Yoto official icons
     """
     icons = await icon_service.get_icons(
         api_client=api_dep,
@@ -44,7 +50,7 @@ async def get_icons_grid(
     if query:
         title = f"Search Results for '{query}'"
 
-    return render_partial(IconGridPartial(icons=icons, title=title))
+    return IconGridPartial(icons=icons, title=title)
 
 
 @router.get("/{media_id}", response_class=HTMLResponse)
@@ -52,7 +58,7 @@ async def get_icon_media(
     media_id: str,
     icon_service: IconServiceDep,
     api_dep: YotoClientDep,
-) -> str:
+):
     """
     Fetch an icon image by its media ID from the Yoto public icons manifest.
 
@@ -73,12 +79,14 @@ async def get_icon_media(
     try:
         # Normalize media_id (remove yoto:# prefix if present)
         clean_media_id = media_id.removeprefix("yoto:#")
-        
+
         # Try to get the icon (this downloads if not cached)
         icon_as_url = await icon_service.get_icon_by_media_id(clean_media_id, api_dep)
 
         if icon_as_url is None:
-            logger.debug(f"Icon {clean_media_id} still loading, returning polling container")
+            logger.debug(
+                f"Icon {clean_media_id} still loading, returning polling container"
+            )
             # Return a polling container - HTMX will keep polling every 2 seconds
             polling_container = d.Div(
                 id=f"icon-{clean_media_id}",
@@ -96,10 +104,14 @@ async def get_icon_media(
                     )
                 )
             )
-            return render_partial(polling_container)
+            return polling_container
 
         # Success - return the icon image component (this replaces the polling container)
-        return render_partial(IconImg(icon_id=clean_media_id, title="Icon", src=icon_as_url))
+        img = IconImg(icon_id=clean_media_id, title="Icon", src=icon_as_url)
+        # Cache response for 1 day
+        response = HTMLResponse(content=render_partial(img))
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
 
     except Exception as e:
         logger.error(f"Error fetching icon {media_id}: {e}")
@@ -117,4 +129,4 @@ async def get_icon_media(
                 title="Error loading icon, retrying...",
             )("⚠️")
         )
-        return render_partial(polling_container)
+        return polling_container

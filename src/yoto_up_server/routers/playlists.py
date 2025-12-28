@@ -24,8 +24,8 @@ from fastapi import (
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
 
-from yoto_up.models import Card
-from yoto_up.yoto_api_client import YotoApiClient
+from yoto_up.models import Card, ChapterDisplay
+from yoto_up.yoto_api_client import TrackDisplay, YotoApiClient
 from yoto_up_server.dependencies import (
     AuthenticatedSessionApiDep,
     ContainerDep,
@@ -289,49 +289,38 @@ async def create_playlist_with_cover(
 
 
 @router.get("/{playlist_id}/icon-sidebar", response_class=HTMLResponse)
-async def get_icon_sidebar(
+async def get_icon_selection_sidebar(
     playlist_id: str,
     request: Request,
-    chapter_id: Optional[int] = Query(None),
-    track_id: Optional[int] = Query(None),
-) -> str:
-    """Serve the icon selection sidebar."""
-    chapter_ids = [chapter_id] if chapter_id is not None else []
-    track_ids = [track_id] if track_id is not None else []
-
-    return render_partial(
-        IconSidebarPartial(
-            playlist_id=playlist_id,
-            chapter_ids=chapter_ids,
-            track_ids=track_ids,
-        )
-    )
-
-
-@router.post("/{playlist_id}/icon-sidebar-batch", response_class=HTMLResponse)
-async def get_icon_sidebar_batch(
-    playlist_id: str,
-    request: Request,
-    chapter_id: List[int] = Form(default=[]),
-) -> str:
+    chapter_ids: List[int] = Query(default=[]),
+    track_ids: List[str] = Query(default=[]),
+):
     """Serve the icon selection sidebar for batch selection."""
-    return render_partial(
-        IconSidebarPartial(
-            playlist_id=playlist_id,
-            chapter_ids=chapter_id,
-        )
+    parsed_track_ids: List[tuple[int, int]] = []
+    for tr in track_ids:
+        try:
+            ch_idx_str, tr_idx_str = tr.split(":")
+            ch_idx = int(ch_idx_str)
+            tr_idx = int(tr_idx_str)
+            parsed_track_ids.append((ch_idx, tr_idx))
+        except (ValueError, IndexError):
+            continue
+    return IconSidebarPartial(
+        playlist_id=playlist_id,
+        chapter_ids=chapter_ids,
+        track_ids=parsed_track_ids,
     )
 
 
-@router.post("/{playlist_id}/update-chapter-icon", response_class=HTMLResponse)
-async def update_chapter_icon_batch(
+@router.post("/{playlist_id}/update-items-icon", response_class=HTMLResponse)
+async def update_playlist_items_icon(
     playlist_id: str,
     request: Request,
     yoto_client: YotoClientDep,
     icon_id: str = Form(...),
-    chapter_id: List[int] = Form(default=[]),
-    track_id: List[int] = Form(default=[]),
-) -> str:
+    chapter_ids: List[int] = Form(default=[]),
+    track_ids: List[tuple[int, int]] = Form(default=[]),
+) :
     """
     Update icons for multiple chapters/tracks.
     """
@@ -343,285 +332,48 @@ async def update_chapter_icon_batch(
     if not card:
         raise HTTPException(status_code=404, detail="Playlist not found")
 
-    if not hasattr(card, "content") or not card.content:
-        raise HTTPException(status_code=400, detail="Card has no content")
-
-    chapters = getattr(card.content, "chapters", []) or []
+    chapters = card.content.chapters if card.content and card.content.chapters else []
 
     icon_val = icon_id
     if not icon_val.startswith("yoto:#"):
         icon_val = f"yoto:#{icon_val}"
 
+    tracks_by_chapter: Dict[int, List[int]] = {}
+    for ch_id, tr_id in track_ids:
+        tracks_by_chapter.setdefault(ch_id, []).append(tr_id)
+
     updated = False
-
     # Update chapters
-    for idx in chapter_id:
-        if 0 <= idx < len(chapters):
-            chapter = chapters[idx]
-            # Ensure display object exists
-            if not hasattr(chapter, "display") or not chapter.display:
-                from yoto_up.models import Display
-                chapter.display = Display()
+    for ch_idx in chapter_ids:
+        if 0 <= ch_idx < len(chapters):
+            chapter = chapters[ch_idx]
+            display = chapter.display
+            if not display:
+                display = ChapterDisplay()
+            if display.icon16x16 != icon_val:
+                display.icon16x16 = icon_val
+                chapter.display = display
+                updated = True
 
-            chapter.display.icon16x16 = icon_val
-            chapter.display.icon32x32 = icon_val
-            updated = True
+            # Update tracks
+            if ch_idx in tracks_by_chapter:
+                for tr_idx in tracks_by_chapter[ch_idx]:
+                    if 0 <= tr_idx < len(chapter.tracks):
+                        track = chapter.tracks[tr_idx]
+                        display = track.display
+                        if not display:
+                            display = TrackDisplay()
+                        if display.icon16x16 != icon_val:
+                            display.icon16x16 = icon_val
+                            track.display = display
+                            updated = True
 
     if updated:
         # Save the card
         await yoto_client.update_card(card)
 
     # Return updated detail view
-    return render_partial(
-        PlaylistDetailRefactored(card=card, playlist_id=card.cardId)
-    )
-
-
-@router.post("/update-icon", response_class=JSONResponse)
-async def update_chapter_icon(
-    request: Request,
-    yoto_client: YotoClientDep,
-    payload: UpdateChapterIconRequest,
-) -> UpdateChapterIconResponse:
-    """
-    Update a chapter's icon.
-
-    Expects JSON body with:
-    - chapter_index: Index of chapter to update
-    - icon_id: Icon ID (mediaId for Yoto icons, or icon id)
-    - playlist_id (optional): ID of the playlist containing the chapter
-
-    Returns success status.
-    """
-    try:
-        chapter_index = payload.chapter_index
-        icon_id = payload.icon_id
-        playlist_id = payload.playlist_id
-
-        if not icon_id:
-            raise HTTPException(status_code=400, detail="icon_id is required")
-
-        if chapter_index is None:
-            raise HTTPException(status_code=400, detail="chapter_index is required")
-
-        logger.info(f"Updating chapter {chapter_index} icon to {icon_id}")
-
-        # The icon_id should be used as the mediaId for Yoto icons
-        # Format: yoto:#{mediaId}
-        icon_field = f"yoto:#{icon_id}"
-
-        # If we have a playlist_id, we can update directly
-        # Otherwise, we need to get the current card from context (this requires more info)
-        # For now, we'll require playlist_id to be provided
-
-        if playlist_id:
-            # Fetch the card
-            card: Optional[Card] = await yoto_client.get_card(playlist_id)
-            if not card:
-                raise HTTPException(status_code=404, detail="Playlist not found")
-        else:
-            # Try to get from session or context - for now, return error
-            raise HTTPException(
-                status_code=400,
-                detail="playlist_id is required. Include it in the request.",
-            )
-
-        # Update the chapter's icon
-        try:
-            if not hasattr(card, "content") or not card.content:
-                raise HTTPException(status_code=400, detail="Card has no content")
-
-            chapters = getattr(card.content, "chapters", []) or []
-
-            if chapter_index >= len(chapters):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Chapter index {chapter_index} out of range (total: {len(chapters)})",
-                )
-
-            chapter = chapters[chapter_index]
-
-            # Ensure chapter has a display object
-            if not hasattr(chapter, "display") or chapter.display is None:
-                # Create a new display object
-                from yoto_up.models import ChapterDisplay
-
-                chapter.display = ChapterDisplay()
-
-            # Update the icon
-            chapter.display.icon16x16 = icon_field
-
-            logger.info(f"Updated chapter {chapter_index} icon to {icon_field}")
-
-            # Save the card back to API
-            await yoto_client.update_card(card)
-
-            return UpdateChapterIconResponse(
-                status="success",
-                chapter_index=chapter_index,
-                icon_id=icon_id,
-                icon_field=icon_field,
-            )
-
-        except AttributeError as e:
-            logger.error(f"Failed to update chapter icon: {e}")
-            raise HTTPException(
-                status_code=400, detail=f"Invalid card structure: {str(e)}"
-            )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update chapter icon: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{playlist_id}/update-chapter-icon", response_class=HTMLResponse)
-async def update_chapter_icon_with_playlist_id(
-    request: Request,
-    playlist_id: Annotated[str, Path()],
-    yoto_client: YotoClientDep,
-    icon_id: Annotated[str, Form(description="Icon ID to assign")] = "",
-    chapter_id: Annotated[
-        Optional[list[str]], Form(description="Chapter IDs from HTMX")
-    ] = None,
-    track_id: Annotated[
-        Optional[list[str]], Form(description="Track IDs from HTMX")
-    ] = None,
-):
-    """
-    Update chapter/track icons for a specific playlist via HTMX form.
-
-    Receives form data from HTMX form submission:
-    - icon_id: Icon ID to assign (from submit button value)
-    - chapter_ids: JSON object with "chapter_ids" key or comma-separated indices
-    - track_ids: JSON object with "track_ids" key or comma-separated indices
-
-    Returns empty HTML on success (hx-swap="none" doesn't change anything)
-    or error message on failure.
-    """
-    try:
-        logger.debug(
-            f"Icon assignment request: icon_id={icon_id}, chapter_id={chapter_id}, track_id={track_id}"
-        )
-
-        if not icon_id:
-            logger.error("icon_id is required")
-            return d.Div(classes="text-red-500 p-4")("Error: Icon ID is required")
-
-        # Parse chapter_id and track_id from HTMX form values
-        # HTMX sends multiple values as list: chapter_id=[0, 1, 2]
-        chapter_id_list = []
-        track_id_list = []
-
-        # Convert chapter_id strings to integers
-        if chapter_id:
-            try:
-                chapter_id_list = [int(x.strip()) for x in chapter_id if x.strip()]
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse chapter_id: {chapter_id}, error: {e}")
-
-        # Convert track_id strings to integers
-        if track_id:
-            try:
-                track_id_list = [int(x.strip()) for x in track_id if x.strip()]
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse track_id: {track_id}, error: {e}")
-
-        logger.debug(
-            f"Parsed chapter_id_list={chapter_id_list}, track_id_list={track_id_list}"
-        )
-
-        if not chapter_id_list and not track_id_list:
-            logger.error("At least one chapter_id or track_id is required")
-            return d.Div(classes="text-red-500 p-4")(
-                "Error: No chapters or tracks selected"
-            )
-
-        logger.info(
-            f"Updating {len(chapter_id_list)} chapters and {len(track_id_list)} tracks with icon {icon_id} in playlist {playlist_id}"
-        )
-
-        # Format the icon field for Yoto API
-        icon_field = f"yoto:#{icon_id}"
-
-        # Fetch the card
-        card: Optional[Card] = await yoto_client.get_card(playlist_id)
-        if not card:
-            logger.error(f"Playlist {playlist_id} not found")
-            return d.Div(classes="text-red-500 p-4")("Error: Playlist not found")
-
-        # Update all specified chapters
-        if not hasattr(card, "content") or not card.content:
-            logger.error("Card has no content")
-            return d.Div(classes="text-red-500 p-4")("Error: Card has no content")
-
-        chapters = getattr(card.content, "chapters", []) or []
-
-        updated_count = 0
-
-        # Update chapters
-        for chapter_index in chapter_id_list:
-            if chapter_index >= len(chapters):
-                logger.warning(
-                    f"Chapter index {chapter_index} out of range (total: {len(chapters)})"
-                )
-                continue
-
-            chapter = chapters[chapter_index]
-
-            # Ensure chapter has a display object
-            if not hasattr(chapter, "display") or chapter.display is None:
-                from yoto_up.models import ChapterDisplay
-
-                chapter.display = ChapterDisplay()
-
-            # Update the icon
-            chapter.display.icon16x16 = icon_field
-            logger.info(f"Updated chapter {chapter_index} icon to {icon_field}")
-            updated_count += 1
-
-        # Update tracks if any (future feature)
-        # for now, just log them
-        if track_id_list:
-            logger.info(
-                f"Track icon assignment for tracks {track_id_list} not yet implemented"
-            )
-
-        # Save the card back to API
-        if updated_count > 0:
-            # Ensure createdByClientId is set (required by API)
-            if not card.createdByClientId:
-                # Use the yoto_client's config client_id if available
-                if hasattr(yoto_client, "config") and hasattr(
-                    yoto_client.config, "client_id"
-                ):
-                    card.createdByClientId = yoto_client.config.client_id
-                else:
-                    # Fallback to a default client ID
-                    card.createdByClientId = "yoto-up-server"
-
-            logger.info(
-                f"Before API update, chapter 0 icon: {chapters[0].display.icon16x16}"
-            )
-            updated_card = await yoto_client.update_card(card)
-            logger.info(
-                f"After API update, returned chapter 0 icon: {updated_card.content.chapters[0].display.icon16x16 if updated_card.content.chapters else 'NO CHAPTERS'}"
-            )
-            logger.info(
-                f"Successfully updated {updated_count} chapters in playlist {playlist_id}"
-            )
-
-        # Return empty response (HTMX with hx-swap="none" won't swap anything)
-        return ""
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        # Use .format() instead of f-string to avoid KeyError when error message contains braces
-        logger.error("Failed to update chapter icon: {}", str(e), exc_info=True)
-        error_msg = str(e).replace("<", "&lt;").replace(">", "&gt;")
-        return d.Div(classes="text-red-500 p-4")(f"Error: {error_msg}")
+    return PlaylistDetailRefactored(card=card, playlist_id=card.cardId)
 
 
 @router.post("/reorder-chapters", response_class=JSONResponse)
@@ -857,11 +609,6 @@ async def delete_playlist(
     except Exception as e:
         logger.error(f"Failed to delete playlist {playlist_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============================================================================
-# New Session-Based Upload Endpoints
-# ============================================================================
 
 
 @router.post("/{playlist_id}/upload-session", response_class=JSONResponse)
@@ -1124,82 +871,6 @@ async def get_playlist_upload_sessions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{playlist_id}/toggle-edit-mode", response_class=HTMLResponse)
-async def toggle_edit_mode(
-    request: Request,
-    playlist_id: Annotated[str, Path()],
-    session_api: AuthenticatedSessionApiDep,
-    enable: Annotated[bool, Query(description="Enable or disable edit mode")] = True,
-) -> str:
-    """
-    Toggle edit mode for a playlist.
-
-    Returns edit controls partial for HTMX swap.
-    """
-    try:
-        return render_partial(
-            EditControlsPartial(playlist_id=playlist_id, edit_mode_active=enable)
-        )
-    except Exception as e:
-        logger.error(f"Failed to toggle edit mode: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{playlist_id}/upload-modal", response_class=HTMLResponse)
-async def get_upload_modal(
-    request: Request,
-    playlist_id: Annotated[str, Path()],
-    session_api: AuthenticatedSessionApiDep,
-) -> str:
-    """
-    Get upload modal HTML.
-
-    Returns upload modal partial for HTMX.
-    """
-    try:
-        return render_partial(UploadModalPartial(playlist_id=playlist_id))
-    except Exception as e:
-        logger.error(f"Failed to get upload modal: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{playlist_id}/json-modal", response_class=HTMLResponse)
-async def get_json_modal(
-    request: Request,
-    playlist_id: Annotated[str, Path()],
-    yoto_client: YotoClientDep,
-) -> str:
-    """
-    Get JSON display modal with playlist data.
-
-    Returns JSON modal partial for HTMX.
-    """
-    try:
-        card: Optional[Card] = await yoto_client.get_card(playlist_id)
-        if not card:
-            raise HTTPException(status_code=404, detail="Card not found")
-
-        import json
-
-        card_data = card.model_dump(mode="json")
-        json_string = json.dumps(card_data, indent=2)
-
-        return render_partial(JsonDisplayModalPartial(json_data=json_string))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get JSON modal: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{playlist_id}/test-endpoint", response_class=HTMLResponse)
-async def test_endpoint(
-    playlist_id: Annotated[str, Path()],
-) -> str:
-    """Test endpoint to verify server reload."""
-    return d.Div()("TEST ENDPOINT WORKS 2025-01-20")
-
-
 @router.delete(
     "/{playlist_id}/upload-session/{session_id}", response_class=JSONResponse
 )
@@ -1309,4 +980,72 @@ async def stop_upload_session(
         raise
     except Exception as e:
         logger.error(f"Failed to stop upload session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/toggle-edit-mode", response_class=HTMLResponse)
+async def toggle_edit_mode(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    session_api: AuthenticatedSessionApiDep,
+    enable: Annotated[bool, Query(description="Enable or disable edit mode")] = True,
+) -> str:
+    """
+    Toggle edit mode for a playlist.
+
+    Returns edit controls partial for HTMX swap.
+    """
+    try:
+        return render_partial(
+            EditControlsPartial(playlist_id=playlist_id, edit_mode_active=enable)
+        )
+    except Exception as e:
+        logger.error(f"Failed to toggle edit mode: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/upload-modal", response_class=HTMLResponse)
+async def get_upload_modal(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    session_api: AuthenticatedSessionApiDep,
+) -> str:
+    """
+    Get upload modal HTML.
+
+    Returns upload modal partial for HTMX.
+    """
+    try:
+        return render_partial(UploadModalPartial(playlist_id=playlist_id))
+    except Exception as e:
+        logger.error(f"Failed to get upload modal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/json-modal", response_class=HTMLResponse)
+async def get_json_modal(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    yoto_client: YotoClientDep,
+) -> str:
+    """
+    Get JSON display modal with playlist data.
+
+    Returns JSON modal partial for HTMX.
+    """
+    try:
+        card: Optional[Card] = await yoto_client.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Card not found")
+
+        import json
+
+        card_data = card.model_dump(mode="json")
+        json_string = json.dumps(card_data, indent=2)
+
+        return render_partial(JsonDisplayModalPartial(json_data=json_string))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get JSON modal: {e}")
         raise HTTPException(status_code=500, detail=str(e))

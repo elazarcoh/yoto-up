@@ -8,18 +8,22 @@ import json
 from pydom import Component
 from pydom import html as d
 
+from yoto_up_server.models import DisplayIcon
+
 
 class IconGridPartial(Component):
     """Server-rendered icon grid for selection via HTMX form submission."""
 
     def __init__(
         self,
-        icons: List[dict],
+        icons: List[DisplayIcon],
         title: str = "Icons",
+        use_lazy_loading: bool = False,
     ):
         super().__init__()
         self.icons = icons
         self.title = title
+        self.use_lazy_loading = use_lazy_loading
 
     def render(self):
         if not self.icons:
@@ -36,21 +40,10 @@ class IconGridPartial(Component):
             *[self._render_icon(icon) for icon in self.icons],
         )
 
-    def _render_icon(self, icon: dict):
+    def _render_icon(self, icon: DisplayIcon):
         """Render a single icon as a submit button in a form."""
-        icon_id = icon.get("mediaId") or icon.get("id")
-        title = icon.get("title", "Untitled")
-        thumbnail = icon.get("thumbnail")
-
-        thumbnail_html = (
-            d.Img(
-                src=thumbnail, alt=title, classes="w-full h-full object-cover rounded"
-            )
-            if thumbnail
-            else d.Div(
-                classes="w-full h-full bg-gray-200 rounded flex items-center justify-center text-xs text-gray-400"
-            )("No image")
-        )
+        icon_id = icon.mediaId
+        title = icon.title or "Untitled"
 
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
@@ -58,17 +51,21 @@ class IconGridPartial(Component):
             type="submit",
             name="icon_id",
             value=icon_id,
-        )(thumbnail_html)
+        )(LazyIconImg(
+                icon_id=icon_id,
+                title=title,
+                classes="w-full h-full object-cover rounded",
+            ))
 
 
 class IconSidebarPartial(Component):
-    """Server-rendered icon sidebar with HTMX form submission."""
+    """Server-rendered icon sidebar with user and official icon grids."""
 
     def __init__(
         self,
         playlist_id: str,
         chapter_ids: Optional[List[int]] = None,
-        track_ids: Optional[List[int]] = None,
+        track_ids: Optional[List[tuple[int, int]]] = None,
     ):
         super().__init__()
         self.playlist_id = playlist_id
@@ -78,20 +75,15 @@ class IconSidebarPartial(Component):
     def render(self):
         return d.Form(
             id="icon-assignment-form",
-            hx_post=f"/playlists/{self.playlist_id}/update-chapter-icon",
+            hx_post=f"/playlists/{self.playlist_id}/update-items-icon",
             hx_target="#playlist-detail",
             hx_swap="outerHTML",
+            hx_vals=json.dumps({
+                "chapter_ids": self.chapter_ids,
+                "track_ids": self.track_ids,
+            }),
             classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto flex flex-col",
         )(
-            # Hidden inputs for chapter and track IDs (will be sent as form data)
-            *[
-                d.Input(type="hidden", name="chapter_id", value=str(ch_id))
-                for ch_id in self.chapter_ids
-            ],
-            *[
-                d.Input(type="hidden", name="track_id", value=str(tr_id))
-                for tr_id in self.track_ids
-            ],
             # Header
             d.Div(
                 classes="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center z-10"
@@ -103,57 +95,48 @@ class IconSidebarPartial(Component):
                     classes="text-gray-500 hover:text-gray-700 text-2xl",
                     type="button",
                     id="close-icon-sidebar-btn",
+                    on_click="closeIconSidebar()",
                 )("✕"),
             ),
-            # Search
+            # Search bar (placeholder for future implementation)
             d.Div(classes="px-6 py-4 bg-gray-50 border-b border-gray-200")(
                 d.Div(classes="flex gap-2")(
                     d.Input(
                         type="text",
                         id="icon-search-input",
                         name="query",
-                        placeholder="Search icons...",
+                        placeholder="Search icons... (coming soon)",
                         classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                        hx_get="/icons/grid",
-                        hx_trigger="keyup changed delay:500ms",
-                        hx_target="#icons-grid",
-                        hx_include="[name='query']",
-                        hx_indicator="#search-indicator",
+                        disabled=True,
                     ),
-                    d.Div(
-                        id="search-indicator",
-                        classes="htmx-indicator flex items-center",
-                    )(
-                        d.Div(
-                            classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
-                        )
-                    ),
-                ),
-                d.Div(classes="mt-2 flex gap-2")(
                     d.Button(
-                        classes="text-sm text-indigo-600 hover:text-indigo-900",
+                        classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50",
                         type="button",
-                        hx_get="/icons/grid?source=user&limit=100",
-                        hx_target="#icons-grid",
-                        hx_swap="innerHTML",
-                    )("My Icons"),
-                    d.Button(
-                        classes="text-sm text-indigo-600 hover:text-indigo-900",
-                        type="button",
-                        hx_get="/icons/grid?source=yotoicons&limit=50",
-                        hx_target="#icons-grid",
-                        hx_swap="innerHTML",
-                    )("Yoto Icons"),
+                        disabled=True,
+                    )("Search"),
                 ),
             ),
-            # Icons grid container - flex-grow to fill remaining space
-            d.Div(
-                id="icons-grid",
-                classes="flex-1 overflow-y-auto px-6 py-4 grid grid-cols-4 gap-3",
-                hx_get="/icons/grid?source=user&limit=100",
-                hx_trigger="load",
-                hx_swap="innerHTML",
-            )(),
+            # Content area with scrollable grids
+            d.Div(classes="flex-1 overflow-y-auto px-6 py-4 space-y-8")(
+                # User icons grid (max 16)
+                d.Div(
+                    id="user-icons-section",
+                    hx_get="/icons/grid?source=user&limit=16",
+                    hx_trigger="load",
+                    hx_target="this",
+                    hx_swap="innerHTML",
+                    classes="grid grid-cols-4 gap-3",
+                )(),
+                # Official icons grid (max 50)
+                d.Div(
+                    id="official-icons-section",
+                    hx_get="/icons/grid?source=official&limit=50",
+                    hx_trigger="load",
+                    hx_target="this",
+                    hx_swap="innerHTML",
+                    classes="grid grid-cols-4 gap-3",
+                )(),
+            ),
             # Script to handle sidebar interactions
             d.Script()("""//js
             // Helper function to close icon sidebar
@@ -163,14 +146,6 @@ class IconSidebarPartial(Component):
                 if(overlay) overlay.classList.add('hidden');
                 if(sidebar) sidebar.innerHTML = '';
             }
-            
-            // Add event listener to close button
-            document.addEventListener('DOMContentLoaded', function() {
-                const closeBtn = document.getElementById('close-icon-sidebar-btn');
-                if(closeBtn) {
-                    closeBtn.addEventListener('click', closeIconSidebar);
-                }
-            });
             
             // Listen for successful form submissions
             document.addEventListener('htmx:afterRequest', function(event) {
@@ -238,7 +213,6 @@ class IconImg(Component):
             alt=self.title,
             title=self.title,
             classes=self.classes,
-            loading="lazy",
         )
 
 
@@ -264,13 +238,13 @@ class LazyIconImg(Component):
         self.container_id = container_id or f"icon-{icon_id.replace('#', '')}"
 
     def render(self):
-        # ph1 (placeholder 1) - loading state
-        # This will be replaced by ph2 once the icon is loaded
-        loading_placeholder = d.Img(
-            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23e5e7eb' opacity='0.5'/%3E%3C/svg%3E",
-            alt=f"{self.title} (loading)",
-            title=f"{self.title} (loading)",
-            classes=f"{self.classes} animate-pulse",
+        loading_placeholder = d.Div(
+            classes=self.classes,
+            title="Loading icon...",
+        )(
+            d.Div(
+                classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
+            )
         )
 
         # Container with HTMX load trigger
@@ -279,6 +253,7 @@ class LazyIconImg(Component):
             hx_get=f"/icons/{self.icon_id}",
             hx_trigger="load",
             hx_swap="outerHTML",
+            hx_target="this",
             classes="inline-block",
         )(loading_placeholder)
 

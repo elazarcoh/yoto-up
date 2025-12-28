@@ -51,8 +51,8 @@ class ChapterDisplay(BaseModel):
 
 
 class Chapter(BaseModel):
+    key: str
     title: str
-    key: Optional[str] = None
     overlayLabel: Optional[str] = None
     overlayLabelOverride: Optional[str] = None
     tracks: List[Track]

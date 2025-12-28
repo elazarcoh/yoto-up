@@ -11,7 +11,7 @@ import base64
 from asyncio import Future, Lock
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Dict, List, Optional
+from typing import TYPE_CHECKING, Annotated, Dict, List, Literal, Optional
 
 import httpx
 from loguru import logger
@@ -307,7 +307,11 @@ class IconService:
             return None
 
         async with self._running_requests_lock:
-            if icon_def.url in self._running_requests:
+            # Check again if i's in the cache
+            if media_id in self._icon_cache:
+                logger.debug(f"Icon {media_id} found in memory cache")
+                return self._icon_cache[media_id]
+            elif icon_def.url in self._running_requests:
                 # Another request is already in progress for this icon
                 logger.debug(f"Waiting for ongoing download of icon {media_id}")
                 future = self._running_requests[icon_def.url]
@@ -348,46 +352,32 @@ class IconService:
     async def get_icons(
         self,
         api_client: YotoApiClient,
-        source: str = "all",
+        source: Literal["user", "official"],
         query: Optional[str] = None,
         limit: int = 100,
-    ) -> List[Dict]:
+    ) -> List[DisplayIcon]:
         """
         Get a list of icons, optionally filtered by source and query.
         """
         await self._ensure_public_icons_manifest(api_client)
         await self._ensure_user_icon_manifest(api_client)
 
-        icons = []
+        icons: List[DisplayIcon] = []
 
-        if source in ["user", "all"]:
+        if source=="user":
             if self._user_manifest:
                 for icon in self._user_manifest.displayIcons:
-                    icons.append(
-                        {
-                            "id": icon.mediaId,
-                            "title": icon.title or icon.displayIconId,
-                            "thumbnail": icon.url,  # Use URL directly for now
-                            "source": "user",
-                        }
-                    )
+                    icons.append(icon)
 
-        if source in ["yotoicons", "official", "all"]:
+        elif source=="official":
             if self._public_manifest:
                 for icon in self._public_manifest.displayIcons:
-                    icons.append(
-                        {
-                            "id": icon.mediaId,
-                            "title": icon.title or icon.displayIconId,
-                            "thumbnail": icon.url,
-                            "source": "official",
-                        }
-                    )
+                    icons.append(icon)
 
         # Filter by query
         if query:
             query = query.lower()
-            icons = [icon for icon in icons if query in (icon["title"] or "").lower()]
+            icons = [icon for icon in icons if query in (icon.title or "").lower()]
 
         return icons[:limit]
 

@@ -8,9 +8,7 @@ from pydom import Component
 from pydom import html as d
 
 from yoto_up.models import Card
-from yoto_up_server.templates.components import ChapterItem, TrackItem
-# Deprecated: old scripts-based approach
-# from yoto_up_server.templates.scripts import get_playlist_scripts
+from yoto_up_server.templates.components import ChapterItem
 
 
 class PlaylistsPage(Component):
