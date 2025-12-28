@@ -395,6 +395,186 @@ class IconService:
 
         logger.info(f"Local icon index built: {len(self._indices.all_entries())} icons")
 
+    # ========== Cache Helper Methods ==========
+
+    def _get_from_memory_cache(self, media_id: str) -> Optional[str]:
+        """Check if icon exists in memory cache."""
+        if media_id in self._icon_cache:
+            logger.debug(f"Icon {media_id} found in memory cache")
+            return self._icon_cache[media_id]
+        return None
+
+    def _get_from_disk_cache(self, media_id: str) -> Optional[str]:
+        """Check if icon exists in disk indices and load into memory."""
+        entry = self._indices.get(media_id)
+        if entry:
+            logger.debug(f"Icon {media_id} found in disk cache")
+            self._icon_cache[media_id] = entry.data
+            return entry.data
+        return None
+
+    def _normalize_media_id(self, media_id: str) -> str:
+        """Strip yoto:# prefix if present."""
+        if media_id.startswith("yoto:#"):
+            return media_id.removeprefix("yoto:#")
+        return media_id
+
+    async def _download_icon_bytes(self, url: str) -> bytes:
+        """Download icon bytes from URL."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            return response.content
+
+    def _cache_icon_data(
+        self,
+        media_id: str,
+        icon_bytes: bytes,
+        icon_def: DisplayIcon,
+        target_dir: Path,
+        source: str,
+    ) -> str:
+        """Convert icon bytes to data URL, cache in memory and disk."""
+        data_url = icon_bytes_to_data_url(icon_bytes)
+        self._icon_cache[media_id] = data_url
+        self._save_icon_to_disk(media_id, data_url, icon_def, target_dir, source)
+        logger.info(f"Cached icon {media_id}: {len(icon_bytes)} bytes")
+        return data_url
+
+    # ========== Icon Type-Specific Methods ==========
+
+    async def _get_yotoicons_icon(self, media_id: str) -> Optional[str]:
+        """
+        Retrieve a YotoIcons icon (yotoicons:*).
+        
+        Flow: Memory cache → Disk cache → Search service cache → Download from yotoicons.com
+        """
+        # Check memory cache
+        cached = self._get_from_memory_cache(media_id)
+        if cached:
+            return cached
+
+        # Check disk cache
+        cached = self._get_from_disk_cache(media_id)
+        if cached:
+            return cached
+
+        # Try to get from search service cache (which has the URL)
+        self._initialize_search_service()
+        if not self._search_service or media_id not in self._search_service._yotoicons_cache:
+            logger.warning(f"YotoIcon {media_id} not found in cache or search service")
+            return None
+
+        icon_def = self._search_service._yotoicons_cache[media_id]
+        logger.debug(f"Found YotoIcon {media_id} in search cache, downloading from {icon_def.url}")
+
+        # Download from yotoicons.com
+        try:
+            icon_bytes = await self._download_icon_bytes(icon_def.url)
+            return self._cache_icon_data(
+                media_id, icon_bytes, icon_def, self._yotoicons_dir, "yotoicons"
+            )
+        except Exception as e:
+            logger.error(f"Error downloading YotoIcon {media_id}: {e}")
+            return None
+
+    async def _get_official_icon(
+        self, media_id: str, api_client: YotoApiClient
+    ) -> Optional[str]:
+        """
+        Retrieve an official Yoto icon (from user or public manifest).
+        
+        Flow: Memory cache → Disk cache → User manifest → Public manifest → Download
+        Includes concurrent request deduplication.
+        """
+        # Normalize ID (strip yoto:# prefix)
+        normalized_id = self._normalize_media_id(media_id)
+
+        # Check memory cache
+        cached = self._get_from_memory_cache(normalized_id)
+        if cached:
+            return cached
+
+        # Check disk cache
+        cached = self._get_from_disk_cache(normalized_id)
+        if cached:
+            return cached
+
+        # Ensure manifests are loaded
+        await self._ensure_public_icons_manifest(api_client)
+        await self._ensure_user_icon_manifest(api_client)
+
+        # Find icon in manifests
+        icon_def: Optional[DisplayIcon] = None
+        source: str = ""
+
+        if normalized_id in self._user_manifest_by_media_id:
+            icon_def = self._user_manifest_by_media_id[normalized_id]
+            source = "user"
+        elif normalized_id in self._public_manifest_by_media_id:
+            icon_def = self._public_manifest_by_media_id[normalized_id]
+            source = "official"
+        else:
+            logger.warning(f"Icon {normalized_id} not found in any manifest")
+            return None
+
+        # Download with concurrent request deduplication
+        return await self._download_with_deduplication(
+            normalized_id, icon_def, self._yoto_cache_dir, source
+        )
+
+    async def _download_with_deduplication(
+        self,
+        media_id: str,
+        icon_def: DisplayIcon,
+        target_dir: Path,
+        source: str,
+    ) -> Optional[str]:
+        """
+        Download icon with concurrent request deduplication.
+        
+        If another request is already downloading the same URL, wait for it.
+        Otherwise, download and notify other waiting requests.
+        """
+        async with self._running_requests_lock:
+            # Double-check cache (might have been populated while waiting for lock)
+            cached = self._get_from_memory_cache(media_id)
+            if cached:
+                return cached
+
+            # Check if download is already in progress
+            if icon_def.url in self._running_requests:
+                logger.debug(f"Waiting for ongoing download of icon {media_id}")
+                future = self._running_requests[icon_def.url]
+                # Release lock before awaiting
+                await future
+                return self._icon_cache.get(media_id)
+
+            # Start new download - create future for other requests to wait on
+            self._running_requests[icon_def.url] = Future()
+
+        # Download the icon (outside the lock)
+        try:
+            logger.debug(f"Downloading icon {media_id} from {icon_def.url}")
+            icon_bytes = await self._download_icon_bytes(icon_def.url)
+            data_url = self._cache_icon_data(media_id, icon_bytes, icon_def, target_dir, source)
+
+            # Notify waiting requests
+            self._running_requests[icon_def.url].set_result(True)
+            del self._running_requests[icon_def.url]
+
+            return data_url
+
+        except Exception as e:
+            logger.error(f"Error downloading icon {media_id}: {e}")
+            # Notify waiting requests of failure
+            if icon_def.url in self._running_requests:
+                self._running_requests[icon_def.url].set_exception(e)
+                del self._running_requests[icon_def.url]
+            return None
+
+    # ========== Main Entry Point ==========
+
     async def get_icon_by_media_id(
         self,
         media_id: str,
@@ -406,135 +586,18 @@ class IconService:
         Lazily fetches the public manifest on first call using authenticated API.
         Downloads the icon from the manifest URL or yotoicons.com on demand.
 
-        For yotoicons: IDs, downloads from yotoicons.com and caches locally.
-
         Args:
-            media_id: The media ID from DisplayIcon.mediaId
-            api_client: YotoApiClient instance (required for first manifest fetch)
+            media_id: The media ID from DisplayIcon.mediaId (e.g., "yotoicons:123", "yoto:#abc", or "abc")
+            api_client: YotoApiClient instance (required for manifest fetch and downloads)
 
         Returns:
             Icon data URL (base64), or None if not found
         """
-        # Handle yotoicons caching (download and cache from yotoicons.com)
+        # Dispatch based on icon type
         if media_id.startswith("yotoicons:"):
-            # Check if already cached in memory
-            if media_id in self._icon_cache:
-                logger.debug(f"YotoIcon {media_id} found in memory cache")
-                return self._icon_cache[media_id]
-
-            # Check if in disk cache (indices already loaded)
-            entry = self._indices.get(media_id)
-            if entry:
-                logger.debug(f"YotoIcon {media_id} found in disk cache")
-                self._icon_cache[media_id] = entry.data
-                return entry.data
-
-            # Try to get from search service cache (which has the URL)
-            self._initialize_search_service()
-            if self._search_service and media_id in self._search_service._yotoicons_cache:
-                icon_def = self._search_service._yotoicons_cache[media_id]
-                logger.debug(f"Found YotoIcon {media_id} in search cache, downloading from {icon_def.url}")
-                
-                # Download from the URL
-                try:
-                    async with httpx.AsyncClient(timeout=30.0) as client:
-                        response = await client.get(icon_def.url)
-                        response.raise_for_status()
-                        icon_bytes = response.content
-
-                    as_url = icon_bytes_to_data_url(icon_bytes)
-                    self._icon_cache[media_id] = as_url
-
-                    # Save to disk cache for future use
-                    self._save_icon_to_disk(media_id, as_url, icon_def, self._yotoicons_dir, "yotoicons")
-
-                    logger.info(f"Downloaded and cached YotoIcon {media_id}: {len(icon_bytes)} bytes")
-                    return as_url
-                except Exception as e:
-                    logger.error(f"Error downloading YotoIcon {media_id}: {e}")
-                    return None
-
-            logger.warning(f"YotoIcon {media_id} not found in cache or search service")
-            return None
-
-        if media_id.startswith("yoto:#"):
-            media_id = media_id.removeprefix("yoto:#")
-
-        # Check if we have it cached in memory
-        if media_id in self._icon_cache:
-            logger.debug(f"Icon {media_id} found in memory cache")
-            return self._icon_cache[media_id]
-
-        # Check if we have it in local indices
-        entry = self._indices.get(media_id)
-        if entry:
-            logger.debug(f"Icon {media_id} found in local index")
-            self._icon_cache[media_id] = entry.data
-            return entry.data
-
-        # Ensure manifests are loaded (lazy fetch on first call)
-        await self._ensure_public_icons_manifest(api_client)
-        await self._ensure_user_icon_manifest(api_client)
-
-        # Check if it's in the public manifest
-        icon_def = None
-        target_dir = None
-        source = None
-
-        if media_id in self._user_manifest_by_media_id:
-            icon_def = self._user_manifest_by_media_id[media_id]
-            target_dir = self._yoto_cache_dir
-            source = "user"
-        elif media_id in self._public_manifest_by_media_id:
-            icon_def = self._public_manifest_by_media_id[media_id]
-            target_dir = self._yoto_cache_dir
-            source = "official"
+            return await self._get_yotoicons_icon(media_id)
         else:
-            logger.warning(f"Icon {media_id} not found in any manifest")
-            return None
-
-        async with self._running_requests_lock:
-            # Check again if i's in the cache
-            if media_id in self._icon_cache:
-                logger.debug(f"Icon {media_id} found in memory cache")
-                return self._icon_cache[media_id]
-            elif icon_def.url in self._running_requests:
-                # Another request is already in progress for this icon
-                logger.debug(f"Waiting for ongoing download of icon {media_id}")
-                future = self._running_requests[icon_def.url]
-                await future
-                return self._icon_cache.get(media_id)
-            else:
-                self._running_requests[icon_def.url] = Future()
-
-        # Download the icon from the URL
-        try:
-            logger.debug(f"Downloading icon {media_id} from {icon_def.url}")
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(icon_def.url)
-                response.raise_for_status()
-                icon_bytes = response.content
-
-            as_url = icon_bytes_to_data_url(icon_bytes)
-            self._icon_cache[media_id] = as_url
-
-            # Save to disk
-            self._save_icon_to_disk(media_id, as_url, icon_def, target_dir, source)
-
-            self._running_requests[icon_def.url].set_result(True)
-            del self._running_requests[icon_def.url]
-
-            logger.info(
-                f"Downloaded and cached icon {media_id}: {len(icon_bytes)} bytes"
-            )
-            return as_url
-
-        except Exception as e:
-            logger.error(f"Error downloading icon {media_id}: {e}")
-            if icon_def.url in self._running_requests:
-                self._running_requests[icon_def.url].set_exception(e)
-                del self._running_requests[icon_def.url]
-            return None
+            return await self._get_official_icon(media_id, api_client)
 
     def _initialize_search_service(self) -> None:
         """Initialize the search service with current manifests."""
