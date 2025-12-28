@@ -45,17 +45,29 @@ class IconGridPartial(Component):
         icon_id = icon.mediaId
         title = icon.title or "Untitled"
 
+        # If it's a YotoIcon, use the URL directly to avoid provisioning on view
+        if icon_id.startswith("yotoicons:") and icon.url:
+             img_component = d.Img(
+                src=icon.url,
+                alt=title,
+                title=title,
+                classes="w-full h-full object-cover rounded",
+                loading="lazy"
+            )
+        else:
+            img_component = LazyIconImg(
+                icon_id=icon_id,
+                title=title,
+                classes="w-full h-full object-cover rounded",
+            )
+
         return d.Button(
             classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
             title=title,
             type="submit",
             name="icon_id",
             value=icon_id,
-        )(LazyIconImg(
-                icon_id=icon_id,
-                title=title,
-                classes="w-full h-full object-cover rounded",
-            ))
+        )(img_component)
 
 
 class IconSidebarPartial(Component):
@@ -98,26 +110,47 @@ class IconSidebarPartial(Component):
                     on_click="closeIconSidebar()",
                 )("✕"),
             ),
-            # Search bar (placeholder for future implementation)
+            # Search bar
             d.Div(classes="px-6 py-4 bg-gray-50 border-b border-gray-200")(
-                d.Div(classes="flex gap-2")(
-                    d.Input(
-                        type="text",
-                        id="icon-search-input",
-                        name="query",
-                        placeholder="Search icons... (coming soon)",
-                        classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                        disabled=True,
+                d.Div(classes="flex flex-col gap-2")(
+                    d.Div(classes="flex gap-2")(
+                        d.Input(
+                            type="text",
+                            id="icon-search-input",
+                            name="query",
+                            placeholder="Search cached icons...",
+                            classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
+                            hx_get="/icons/grid?source=cached&limit=50",
+                            hx_trigger="keyup changed delay:500ms",
+                            hx_target="#yotoicons-section",
+                            hx_swap="innerHTML",
+                            hx_indicator="#search-indicator",
+                            hx_include="#icon-search-input",
+                        ),
+                        d.Button(
+                            classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 whitespace-nowrap",
+                            type="button",
+                            hx_get="/icons/grid?source=online&limit=50",
+                            hx_include="#icon-search-input",
+                            hx_target="#yotoicons-section",
+                            hx_swap="innerHTML",
+                            hx_indicator="#yotoicons-indicator",
+                        )("Search Online"),
                     ),
-                    d.Button(
-                        classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50",
-                        type="button",
-                        disabled=True,
-                    )("Search"),
+                    d.Div(classes="flex justify-between text-xs text-gray-500")(
+                        d.Span(id="search-indicator", classes="htmx-indicator")("Searching cached..."),
+                        d.Span(id="yotoicons-indicator", classes="htmx-indicator")("Searching YotoIcons.com..."),
+                    )
                 ),
             ),
             # Content area with scrollable grids
             d.Div(classes="flex-1 overflow-y-auto px-6 py-4 space-y-8")(
+                # Live Search Results (YotoIcons)
+                d.Div(
+                    id="yotoicons-section",
+                    classes="grid grid-cols-4 gap-3 empty:hidden",
+                )(),
+                
                 # User icons grid (max 16)
                 d.Div(
                     id="user-icons-section",
@@ -127,7 +160,8 @@ class IconSidebarPartial(Component):
                     hx_swap="innerHTML",
                     classes="grid grid-cols-4 gap-3",
                 )(),
-                # Official icons grid (max 50)
+                
+                # Official icons grid (max 50) - also acts as local search results container
                 d.Div(
                     id="official-icons-section",
                     hx_get="/icons/grid?source=official&limit=50",
@@ -165,7 +199,7 @@ class IconSearchResultsPartial(Component):
 
     def __init__(
         self,
-        icons: List[dict],
+        icons: List[DisplayIcon],
         query: str,
     ):
         super().__init__()

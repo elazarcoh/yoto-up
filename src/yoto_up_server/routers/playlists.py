@@ -29,6 +29,7 @@ from yoto_up.yoto_api_client import TrackDisplay, YotoApiClient
 from yoto_up_server.dependencies import (
     AuthenticatedSessionApiDep,
     ContainerDep,
+    IconServiceDep,
     UploadProcessingServiceDep,
     UploadSessionServiceDep,
     YotoClientDep,
@@ -317,6 +318,7 @@ async def update_playlist_items_icon(
     playlist_id: str,
     request: Request,
     yoto_client: YotoClientDep,
+    icon_service: IconServiceDep,
     icon_id: str = Form(...),
     chapter_ids: List[int] = Form(default=[]),
     track_ids: List[tuple[int, int]] = Form(default=[]),
@@ -327,6 +329,13 @@ async def update_playlist_items_icon(
     if not icon_id:
         raise HTTPException(status_code=400, detail="icon_id is required")
 
+    # Resolve icon ID (handles yotoicons provisioning)
+    try:
+        resolved_icon_id = await icon_service.resolve_media_id(icon_id, yoto_client)
+    except ValueError as e:
+        logger.error(f"Failed to resolve icon ID: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Fetch the card
     card: Optional[Card] = await yoto_client.get_card(playlist_id)
     if not card:
@@ -334,9 +343,11 @@ async def update_playlist_items_icon(
 
     chapters = card.content.chapters if card.content and card.content.chapters else []
 
-    icon_val = icon_id
+    icon_val = resolved_icon_id
     if not icon_val.startswith("yoto:#"):
         icon_val = f"yoto:#{icon_val}"
+    
+    logger.debug(f"Resolved icon value: {icon_val!r} (length: {len(icon_val)})")
 
     tracks_by_chapter: Dict[int, List[int]] = {}
     for ch_id, tr_id in track_ids:

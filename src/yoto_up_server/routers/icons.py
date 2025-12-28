@@ -7,7 +7,7 @@ Downloads icons from Yoto API on demand using the public manifest.
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, StreamingResponse
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 from pydom import html as d
 from loguru import logger
 
@@ -18,6 +18,7 @@ from yoto_up_server.templates.icon_components import (
     IconGridPartial,
 )
 from yoto_up_server.templates.base import render_partial
+from yoto_up_server.services.icon_service import IconRetrieveSource
 
 router = APIRouter(prefix="/icons", tags=["icons"])
 
@@ -26,27 +27,40 @@ router = APIRouter(prefix="/icons", tags=["icons"])
 async def get_icons_grid(
     icon_service: IconServiceDep,
     api_dep: YotoClientDep,
-    source: Literal["user", "official"] = Query(
-        description="Icon source: user, official"
+    source: List[IconRetrieveSource] = Query(
+        ...,
     ),
-    query: Optional[str] = Query(None, description="Search query"),
+    query: Optional[str] = Query(None, description="Search query for titles"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
+    fuzzy: bool = Query(True, description="Use fuzzy matching for titles"),
     limit: int = Query(100, description="Max number of icons"),
 ):
     """
-    Get a grid of icons for selection.
+    Get a grid of icons for selection with advanced search.
 
-    Sources:
-    - user: User's uploaded icons
-    - official: Yoto official icons
+    Search parameters:
+    - query: Search titles with optional fuzzy matching
+    - tags: Filter by tags (comma-separated)
+    - fuzzy: Enable fuzzy title matching
     """
+    # Parse tags if provided
+    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    
     icons = await icon_service.get_icons(
         api_client=api_dep,
-        source=source,
+        sources=source,
         query=query,
+        tags=tag_list,
+        fuzzy=fuzzy,
         limit=limit,
     )
 
     title = "My Icons" if source == "user" else "Yoto Icons"
+    if source == "yotoicons":
+        title = "YotoIcons.com Results"
+    elif source == "yotoicons_cache":
+        title = "Cached YotoIcons"
+        
     if query:
         title = f"Search Results for '{query}'"
 

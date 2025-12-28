@@ -198,8 +198,8 @@ class CoverImageUploadResponse(BaseModel):
 class IconUploadResponse(BaseModel):
     """Response from icon upload"""
 
-    icon_id: str = Field(..., alias="iconId")
-    url: str
+    mediaId: str = Field(..., description="Media ID for the uploaded icon (43 characters)")
+    url: str = Field(..., description="URL to the uploaded icon")
 
 
 class CoverType(str, Enum):
@@ -650,6 +650,7 @@ class YotoApiClient:
         params: Optional[dict[str, Any]] = None,
         json: Optional[dict[str, Any]] = None,
         data: Optional[dict[str, Any]] = None,
+        content: Optional[bytes] = None,
         files: Optional[dict[str, Any]] = None,
         headers: Optional[dict[str, str]] = None,
         require_auth: bool = True,
@@ -664,6 +665,7 @@ class YotoApiClient:
             params: Query parameters
             json: JSON body
             data: Form data
+            content: Raw bytes to send as request body
             files: File uploads
             headers: Additional headers
             require_auth: Whether authentication is required
@@ -696,6 +698,7 @@ class YotoApiClient:
                 params=params,
                 json=json,
                 data=data,
+                content=content,
                 files=files,
                 headers=request_headers,
             )
@@ -715,6 +718,7 @@ class YotoApiClient:
                     params=params,
                     json=json,
                     data=data,
+                    content=content,
                     files=files,
                     headers=headers,
                     require_auth=require_auth,
@@ -1079,6 +1083,62 @@ class YotoApiClient:
         finally:
             if files:
                 files["image"][1].close()
+
+    async def upload_icon(
+        self,
+        icon_bytes: bytes,
+        filename: str = "icon.png",
+        auto_convert: bool = True,
+    ) -> IconUploadResponse:
+        """
+        Upload a custom icon.
+
+        Args:
+            icon_bytes: The icon image data
+            filename: Filename for the upload
+            auto_convert: Whether to auto-convert the image
+
+        Returns:
+            IconUploadResponse with the new icon ID
+        """
+        params = {
+            "autoConvert": str(auto_convert).lower(),
+            "filename": filename,
+        }
+
+        # Detect MIME type from filename extension
+        ext = Path(filename).suffix.lower()
+        if ext == ".png":
+            mime_type = "image/png"
+        elif ext in (".jpg", ".jpeg"):
+            mime_type = "image/jpeg"
+        elif ext == ".svg":
+            mime_type = "image/svg+xml"
+        elif ext == ".gif":
+            mime_type = "image/gif"
+        else:
+            mime_type = "application/octet-stream"
+
+        # The API expects the raw bytes as the body, not multipart form data
+        # based on the reference implementation in yoto_api.py
+        headers = {
+            "Content-Type": mime_type,
+        }
+
+        response = await self._request(
+            "POST",
+            "/media/displayIcons/user/me/upload",
+            params=params,
+            content=icon_bytes,
+            headers=headers,
+        )
+        
+        # The response might be wrapped in "displayIcon" or flat
+        data = response.json()
+        if "displayIcon" in data:
+            data = data["displayIcon"]
+            
+        return IconUploadResponse.model_validate(data)
 
     # ========================================================================
     # Device Management
