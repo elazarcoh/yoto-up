@@ -14,9 +14,6 @@ def html_id_safe(s: str) -> str:
     return s.replace(" ", "-").replace("#", "%23").replace("/", "-").replace(":", "-")
 
 
-
-
-
 class ChapterItem(Component):
     """List item for a chapter with collapsible tracks."""
 
@@ -73,8 +70,9 @@ class ChapterItem(Component):
                 d.Input(
                     type="checkbox",
                     classes="mr-4 w-5 h-5 hidden accent-indigo-600 cursor-pointer",
-                    name="chapter_id",
-                    value=self.chapter.key,
+                    name="chapter_ids",
+                    value=str(self.index),
+                    data_chapter_id=self.index,
                 ),
                 # Chapter content with collapse/expand toggle
                 d.Div(classes="flex items-center min-w-0 flex-1 gap-3")(
@@ -128,7 +126,7 @@ class ChapterItem(Component):
 class TrackItem(Component):
     """List item for a track within a chapter."""
 
-    def __init__(self,*, track: Track, chapter_index: int, track_index: int):
+    def __init__(self, *, track: Track, chapter_index: int, track_index: int):
         super().__init__()
         self.track = track
         self.chapter_index = chapter_index

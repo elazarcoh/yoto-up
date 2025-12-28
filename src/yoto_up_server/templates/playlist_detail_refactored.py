@@ -414,7 +414,7 @@ class EditControlsPartial(Component):
                 # Set Icon for selected
                 d.Button(
                     classes="px-3 py-1 text-sm bg-indigo-500 text-white rounded hover:bg-indigo-600 transition-colors",
-                    hx_post=f"/playlists/{self.playlist_id}/icon-sidebar-batch",
+                    hx_get=f"/playlists/{self.playlist_id}/icon-sidebar",
                     hx_include="[data-chapter-id]:checked",
                     hx_target="#icon-sidebar-container",
                     hx_swap="innerHTML",
