@@ -16,6 +16,7 @@ class PaginationControls(Component):
 
     def __init__(
         self,
+        *,
         page: int,
         per_page: int,
         total: int,
@@ -122,6 +123,7 @@ class IconGridPartial(Component):
 
     def __init__(
         self,
+        *,
         icons: List[DisplayIcon],
         title: str = "Icons",
         use_lazy_loading: bool = False,
@@ -224,6 +226,7 @@ class IconSidebarPartial(Component):
 
     def __init__(
         self,
+        *,
         playlist_id: str,
         chapter_ids: Optional[List[int]] = None,
         track_ids: Optional[List[tuple[int, int]]] = None,
@@ -348,6 +351,7 @@ class IconSearchResultsPartial(Component):
 
     def __init__(
         self,
+        *,
         icons: List[DisplayIcon],
         query: str,
     ):
@@ -377,6 +381,7 @@ class IconImg(Component):
 
     def __init__(
         self,
+        *,
         icon_id: str,
         src: str,
         title: str = "Icon",
@@ -409,6 +414,7 @@ class LazyIconImg(Component):
 
     def __init__(
         self,
+        *,
         icon_id: str,
         title: str = "Icon",
         classes: str = "w-6 h-6",
@@ -444,7 +450,7 @@ class LazyIconImg(Component):
 class LoadingIconIndicator(Component):
     """Indicator component for loading icon states (used with HTMX)."""
 
-    def __init__(self, media_id: str, status: str = "loading"):
+    def __init__(self, *, media_id: str, status: str = "loading"):
         super().__init__()
         self.media_id = media_id
         self.status = status  # "loading", "error", "not_found"

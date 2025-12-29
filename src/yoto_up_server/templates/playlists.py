@@ -8,7 +8,7 @@ from pydom import Component
 from pydom import html as d
 
 from yoto_up.models import Card
-from yoto_up_server.templates.components import ChapterItem
+from yoto_up_server.templates.playlist_components import ChapterItem
 
 
 class PlaylistsPage(Component):
@@ -92,7 +92,7 @@ class PlaylistsPage(Component):
 class PlaylistListPartial(Component):
     """Partial for playlist list."""
     
-    def __init__(self, cards: List[Card]):
+    def __init__(self, *, cards: List[Card]):
         super().__init__()
         self.cards = cards
     
@@ -185,7 +185,7 @@ def _render_playlist_card(card: Card):
 class PlaylistCard(Component):
     """Card component for a single playlist."""
     
-    def __init__(self, card):
+    def __init__(self, *, card):
         super().__init__()
         self.card = card
     
@@ -246,7 +246,7 @@ class PlaylistCard(Component):
 class PlaylistDetailPartial(Component):
     """Partial for playlist details."""
     
-    def __init__(self, card: Card, playlist_id: str = ""):
+    def __init__(self, *, card: Card, playlist_id: str = ""):
         super().__init__()
         self.card = card
         self.playlist_id = playlist_id

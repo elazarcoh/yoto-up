@@ -11,7 +11,7 @@ from pydom import html as d
 class AuthPage(Component):
     """Authentication page content."""
     
-    def __init__(self, is_authenticated: bool = False):
+    def __init__(self, *, is_authenticated: bool = False):
         self.is_authenticated = is_authenticated
     
     def render(self):
@@ -77,6 +77,7 @@ class AuthStatusPartial(Component):
     
     def __init__(
         self,
+        *,
         is_authenticated: bool = False,
         message: Optional[str] = None,
         error: Optional[str] = None,
@@ -116,7 +117,7 @@ class AuthStatusPartial(Component):
 class DeviceCodeInstructions(Component):
     """Instructions for device code flow."""
     
-    def __init__(self, user_code: str, verification_uri: str, interval: int = 5):
+    def __init__(self, *, user_code: str, verification_uri: str, interval: int = 5):
         self.user_code = user_code
         self.verification_uri = verification_uri
         self.interval = interval
@@ -127,7 +128,7 @@ class DeviceCodeInstructions(Component):
             id="device-code-instructions",
         )(
             # Auto-open verification URI link (only once)
-            d.Script()(f"""
+            d.Script()("""//js
             (function() {{
                 // Only open if not already opened
                 if (!window.deviceCodeOpened) {{

@@ -13,28 +13,22 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urljoin
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from yoto_up.models import (
     Card,
     Device,
     DeviceConfig,
-    DeviceStatus,
-    Track,
-    Chapter,
-    TrackDisplay,
-    ChapterDisplay,
 )
 from yoto_up_server.models import DisplayIconManifest
-
 
 # ============================================================================
 # Configuration & Constants
@@ -198,7 +192,9 @@ class CoverImageUploadResponse(BaseModel):
 class IconUploadResponse(BaseModel):
     """Response from icon upload"""
 
-    mediaId: str = Field(..., description="Media ID for the uploaded icon (43 characters)")
+    mediaId: str = Field(
+        ..., description="Media ID for the uploaded icon (43 characters)"
+    )
     url: str = Field(..., description="URL to the uploaded icon")
 
 
@@ -207,6 +203,184 @@ class CoverType(str, Enum):
 
     SQUARE = "square"
     RECTANGLE = "rectangle"
+
+
+class DeviceCommand(BaseModel):
+    pass
+
+
+class CardInsertionState(int, Enum):
+    """Card insertion states"""
+
+    NO_CARD = 0
+    PHYSICAL_CARD = 1
+    REMOTE_PLAY = 2
+
+
+class DayMode(int, Enum):
+    """Day mode states"""
+
+    UNKNOWN = -1
+    NIGHT = 0
+    DAY = 1
+
+
+class PowerSource(int, Enum):
+    """Power source types"""
+
+    BATTERY_ONLY = 0
+    V2_DOCK = 1
+    USB_C = 2
+    QI_DOCK = 3
+
+
+class DeviceStatus(BaseModel):
+    active_card: Optional[str] = Field(
+        None, alias="activeCard", description="Indicates the active card on the device."
+    )
+
+    ambient_light_sensor_reading: Optional[int] = Field(
+        None,
+        alias="ambientLightSensorReading",
+        description="Provides the reading from the ambient light sensor.",
+    )
+
+    average_download_speed_bytes_second: Optional[float] = Field(
+        None,
+        alias="averageDownloadSpeedBytesSecond",
+        description="Indicates the average download speed in bytes per second.",
+    )
+
+    battery_level_percentage: Optional[float] = Field(
+        None,
+        alias="batteryLevelPercentage",
+        description="Represents the battery level in percentage.",
+    )
+
+    card_insertion_state: Optional[CardInsertionState] = Field(
+        None,
+        alias="cardInsertionState",
+        description="Indicates the state of card insertion. 0 is no inserted card, 1 is a physical card, and 2 is a remote card play",
+    )
+
+    day_mode: Optional[DayMode] = Field(
+        None,
+        alias="dayMode",
+        description="Indicates the day mode status. -1 is unknown, 0 is night, 1 is day",
+    )
+
+    device_id: str = Field(
+        ...,
+        alias="deviceId",
+        description="Represents the unique identifier of the device.",
+    )
+
+    free_disk_space_bytes: Optional[int] = Field(
+        None,
+        alias="freeDiskSpaceBytes",
+        description="Represents the amount of free disk space in bytes.",
+    )
+
+    is_audio_device_connected: Optional[bool] = Field(
+        None,
+        alias="isAudioDeviceConnected",
+        description="Indicates whether an audio device is connected to the device.",
+    )
+
+    is_background_download_active: Optional[bool] = Field(
+        None,
+        alias="isBackgroundDownloadActive",
+        description="Indicates if background download is active.",
+    )
+
+    is_bluetooth_audio_connected: Optional[bool] = Field(
+        None,
+        alias="isBluetoothAudioConnected",
+        description="Indicates if Bluetooth audio is connected.",
+    )
+
+    is_charging: Optional[bool] = Field(
+        None,
+        alias="isCharging",
+        description="Indicates if the device is currently charging.",
+    )
+
+    is_online: Optional[bool] = Field(
+        None,
+        alias="isOnline",
+        description="Indicates if the device is currently online.",
+    )
+
+    network_ssid: Optional[str] = Field(
+        None,
+        alias="networkSsid",
+        description="Represents the network SSID the device is connected to.",
+    )
+
+    nightlight_mode: Optional[str] = Field(
+        None,
+        alias="nightlightMode",
+        description="Indicates the nightlight mode status. Either a hex code or off",
+    )
+
+    power_source: Optional[PowerSource] = Field(
+        None,
+        alias="powerSource",
+        description="Indicates the power source of the device. 0=battery only, 1=V2 dock, 2=USB-C, 3=Qi dock",
+    )
+
+    system_volume_percentage: Optional[float] = Field(
+        None,
+        alias="systemVolumePercentage",
+        description="Represents the system volume in percentage.",
+    )
+
+    temperature_celsius: Optional[float] = Field(
+        None,
+        alias="temperatureCelcius",  # cSpell:disable-line
+        description="Provides the temperature in Celsius.",
+    )
+
+    total_disk_space_bytes: Optional[int] = Field(
+        None,
+        alias="totalDiskSpaceBytes",
+        description="Represents the total disk space in bytes.",
+    )
+
+    updated_at: Optional[datetime] = Field(
+        None,
+        alias="updatedAt",
+        description="Indicates the timestamp of the last update.",
+    )
+
+    uptime: Optional[int] = Field(
+        None,
+        description="Represents the uptime of the device.",
+    )
+
+    user_volume_percentage: float = Field(
+        ...,
+        alias="userVolumePercentage",
+        description="Represents the user volume in percentage.",
+    )
+
+    utc_offset_seconds: Optional[int] = Field(
+        None,
+        alias="utcOffsetSeconds",
+        description="Provides the UTC offset in seconds.",
+    )
+
+    utc_time: Optional[datetime] = Field(
+        None,
+        alias="utcTime",
+        description="Indicates the UTC time.",
+    )
+
+    wifi_strength: Optional[int] = Field(
+        None,
+        alias="wifiStrength",
+        description="Represents the strength of the WiFi connection in decibels.",
+    )
 
 
 # ============================================================================
@@ -306,11 +480,9 @@ class YotoAuthClient:
     def __init__(
         self,
         config: YotoApiConfig,
-        token_storage: TokenStorage,
         http_client: Optional[httpx.AsyncClient] = None,
     ):
         self.config = config
-        self.token_storage = token_storage
         self._client = http_client
         self._token_data: Optional[TokenData] = None
         self._token_lock = asyncio.Lock()
@@ -364,10 +536,7 @@ class YotoAuthClient:
         return decoded["exp"] < time.time() + 30
 
     async def initialize(self) -> None:
-        """Initialize authentication (load existing tokens)"""
-        self._token_data = self.token_storage.load()
-        if self._token_data and self._token_data.is_expired():
-            logger.info("Stored token expired, will need refresh")
+        pass
 
     async def get_device_code(self) -> DeviceAuthResponse:
         """
@@ -433,7 +602,6 @@ class YotoAuthClient:
                     token_response = TokenResponse.model_validate(response.json())
                     token_data = TokenData.from_token_response(token_response)
                     self._token_data = token_data
-                    self.token_storage.save(token_data)
                     if callback:
                         callback("Authentication successful!")
                     return token_data
@@ -492,7 +660,6 @@ class YotoAuthClient:
 
             token_data = TokenData.from_token_response(token_response)
             self._token_data = token_data
-            self.token_storage.save(token_data)
             logger.info("Access token refreshed successfully")
             return token_data
 
@@ -528,7 +695,6 @@ class YotoAuthClient:
     def clear_tokens(self) -> None:
         """Clear all stored tokens"""
         self._token_data = None
-        self.token_storage.clear()
 
 
 # ============================================================================
@@ -553,7 +719,7 @@ class YotoApiClient:
 
         config = YotoApiConfig(client_id="your_client_id")
 
-        async with YotoApiClient(config, token_file=Path("tokens.json")) as client:
+        async with YotoApiClient(config) as client:
             # Authenticate if needed
             if not client.is_authenticated():
                 await client.authenticate()
@@ -569,7 +735,6 @@ class YotoApiClient:
     def __init__(
         self,
         config: YotoApiConfig,
-        token_file: Path,
         http_client: Optional[httpx.AsyncClient] = None,
     ):
         """
@@ -584,8 +749,7 @@ class YotoApiClient:
         self._http_client = http_client
 
         # Initialize authentication
-        token_storage = TokenStorage(token_file)
-        self.auth = YotoAuthClient(config, token_storage, http_client)
+        self.auth = YotoAuthClient(config, http_client)
 
         # Request tracking
         self._request_count = 0
@@ -1082,7 +1246,8 @@ class YotoApiClient:
             return CoverImageUploadResponse.model_validate(response.json())
         finally:
             if files:
-                files["image"][1].close()
+                if hasattr(files["image"][1], "close"):
+                    files["image"][1].close()  # type: ignore
 
     async def upload_icon(
         self,
@@ -1132,12 +1297,12 @@ class YotoApiClient:
             content=icon_bytes,
             headers=headers,
         )
-        
+
         # The response might be wrapped in "displayIcon" or flat
         data = response.json()
         if "displayIcon" in data:
             data = data["displayIcon"]
-            
+
         return IconUploadResponse.model_validate(data)
 
     # ========================================================================
@@ -1151,7 +1316,7 @@ class YotoApiClient:
         Returns:
             List of Device objects
         """
-        response = await self._request("GET", "/devices")
+        response = await self._request("GET", "/device-v2/devices/mine")
         data = response.json()
         devices_data = data.get("devices", data) if isinstance(data, dict) else data
         return [Device.model_validate(device) for device in devices_data]
@@ -1166,7 +1331,7 @@ class YotoApiClient:
         Returns:
             DeviceStatus object
         """
-        response = await self._request("GET", f"/devices/{device_id}/status")
+        response = await self._request("GET", f"/device-v2/{device_id}/status")
         return DeviceStatus.model_validate(response.json())
 
     async def get_device_config(self, device_id: str) -> DeviceConfig:
@@ -1179,7 +1344,7 @@ class YotoApiClient:
         Returns:
             DeviceConfig object
         """
-        response = await self._request("GET", f"/devices/{device_id}/config")
+        response = await self._request("GET", f"/device-v2/{device_id}/config")
         return DeviceConfig.model_validate(response.json())
 
     async def update_device_config(
@@ -1201,89 +1366,24 @@ class YotoApiClient:
         """
         payload = {"name": name, **config.model_dump(exclude_none=True)}
         response = await self._request(
-            "PUT", f"/devices/{device_id}/config", json=payload
+            "PUT", f"/device-v2/{device_id}/config", json=payload
         )
         return DeviceConfig.model_validate(response.json())
 
-    # ========================================================================
-    # Helpers
-    # ========================================================================
-
-    def get_track_from_transcoded_audio(
+    async def send_device_command(
         self,
-        response: TranscodedAudioResponse,
-        track_details: Optional[dict] = None,
-    ) -> Track:
+        device_id: str,
+        command: DeviceCommand,
+    ) -> None:
         """
-        Create a Track object from transcoded audio response.
+        Send a command to the device.
 
         Args:
-            response: TranscodedAudioResponse from upload
-            track_details: Optional overrides for track properties
-
-        Returns:
-            Track object
+            device_id: Device ID
+            command: DeviceCommand object
         """
-        info = response.transcoded_info
-        title = "Unknown Track"
-        if info and info.metadata and info.metadata.title:
-            title = info.metadata.title
-
-        track_kwargs = {
-            "key": "01",
-            "title": title,
-            "trackUrl": f"yoto:#{response.transcoded_sha256}",
-            "duration": info.duration if info else None,
-            "fileSize": info.file_size if info else None,
-            "channels": info.channels if info else None,
-            "format": info.format if info else None,
-            "type": "audio",
-            "overlayLabel": "1",
-            "display": TrackDisplay(
-                icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
-            ),
-        }
-
-        if track_details:
-            track_kwargs.update(track_details)
-
-        return Track(**track_kwargs)
-
-    def get_chapter_from_transcoded_audio(
-        self,
-        response: TranscodedAudioResponse,
-        chapter_details: Optional[dict] = None,
-    ) -> Chapter:
-        """
-        Create a Chapter object from transcoded audio response.
-
-        Args:
-            response: TranscodedAudioResponse from upload
-            chapter_details: Optional overrides for chapter properties
-
-        Returns:
-            Chapter object
-        """
-        track = self.get_track_from_transcoded_audio(response)
-
-        title = track.title
-        if chapter_details and "title" in chapter_details:
-            title = chapter_details["title"]
-
-        chapter_kwargs = {
-            "key": "01",
-            "title": title,
-            "overlayLabel": "1",
-            "tracks": [track],
-            "display": ChapterDisplay(
-                icon16x16="yoto:#aUm9i3ex3qqAMYBv-i-O-pYMKuMJGICtR3Vhf289u2Q"
-            ),
-        }
-
-        if chapter_details:
-            chapter_kwargs.update(chapter_details)
-
-        return Chapter(**chapter_kwargs)
+        payload = command.model_dump(exclude_none=True)
+        await self._request("POST", f"/device-v2/{device_id}/commands", json=payload)
 
     async def get_public_icons(self):
         """

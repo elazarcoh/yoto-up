@@ -7,18 +7,14 @@ from pydom import html as d
 
 from yoto_up.models import Chapter, Track
 from yoto_up_server.templates.icon_components import LazyIconImg
-
-
-def html_id_safe(s: str) -> str:
-    """Convert a string to a safe HTML ID by replacing unsafe characters."""
-    return s.replace(" ", "-").replace("#", "%23").replace("/", "-").replace(":", "-")
+from yoto_up_server.utils.sanitation import html_id_safe
 
 
 class ChapterItem(Component):
     """List item for a chapter with collapsible tracks."""
 
     def __init__(
-        self, chapter: Chapter, index: int, card_id: str = "", playlist_id: str = ""
+        self, *, chapter: Chapter, index: int, card_id: str = "", playlist_id: str = ""
     ):
         super().__init__()
         self.chapter = chapter

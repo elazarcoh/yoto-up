@@ -9,7 +9,7 @@ from pydom import html as d
 class HomePage(Component):
     """Home page content."""
     
-    def __init__(self, is_authenticated: bool = False):
+    def __init__(self, *, is_authenticated: bool = False):
         self.is_authenticated = is_authenticated
     
     def render(self):
@@ -40,18 +40,18 @@ class UnauthenticatedHome(Component):
                 d.Div(classes="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3")(
                     FeatureCard(
                         icon="📚",
-                        title="Playlist Management",
-                        description="Browse and manage your Yoto card library.",
-                    ),
-                    FeatureCard(
-                        icon="⬆️",
-                        title="Easy Uploads",
-                        description="Upload audio files, automatically normalize volume, and create cards.",
+                        title="Card Management",
+                        description="Easily upload and organize your Yoto cards with custom audio content.",
                     ),
                     FeatureCard(
                         icon="🎨",
-                        title="Icon Customization",
-                        description="Create pixel art icons or choose from a library of icons.",
+                        title="Icon Creation",
+                        description="Design and assign unique icons to your cards using our built-in library.",
+                    ),
+                    FeatureCard(
+                        icon="📟",
+                        title="Device Control",
+                        description="Manage your Yoto devices remotely, monitor status, and update settings.",
                     ),
                 ),
             ),
@@ -73,13 +73,6 @@ class AuthenticatedHome(Component):
                     color="bg-blue-500",
                 ),
                 QuickAction(
-                    title="Upload Audio",
-                    icon="⬆️",
-                    url="/upload/",
-                    description="Create new cards from audio",
-                    color="bg-green-500",
-                ),
-                QuickAction(
                     title="Icon Library",
                     icon="🎨",
                     url="/icons/",
@@ -87,10 +80,10 @@ class AuthenticatedHome(Component):
                     color="bg-purple-500",
                 ),
                 QuickAction(
-                    title="Manage Cards",
-                    icon="💳",
-                    url="/cards/",
-                    description="Edit card details",
+                    title="Devices",
+                    icon="📟",
+                    url="/devices/",
+                    description="Manage your devices",
                     color="bg-orange-500",
                 ),
             ),
@@ -100,7 +93,7 @@ class AuthenticatedHome(Component):
 class FeatureCard(Component):
     """Feature card component."""
     
-    def __init__(self, icon: str, title: str, description: str):
+    def __init__(self, *, icon: str, title: str, description: str):
         self.icon = icon
         self.title = title
         self.description = description
@@ -116,7 +109,7 @@ class FeatureCard(Component):
 class QuickAction(Component):
     """Quick action card component."""
     
-    def __init__(self, title: str, icon: str, url: str, description: str, color: str):
+    def __init__(self, *, title: str, icon: str, url: str, description: str, color: str):
         self.title = title
         self.icon = icon
         self.url = url

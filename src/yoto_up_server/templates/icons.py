@@ -115,7 +115,7 @@ class IconsPage(Component):
 class IconGridPartial(Component):
     """Partial for icon grid."""
     
-    def __init__(self, icons: List[Icon], query: Optional[str] = None, source: Optional[str] = None):
+    def __init__(self, *, icons: List[Icon], query: Optional[str] = None, source: Optional[str] = None):
         super().__init__()
         self.icons = icons
         self.query = query
@@ -128,14 +128,14 @@ class IconGridPartial(Component):
             )
         
         # Render each IconTile and return the rendered elements
-        tiles = [IconTile(icon).render() for icon in self.icons]
+        tiles = [IconTile(icon=icon).render() for icon in self.icons]
         return d.Fragment()(*tiles)
 
 
 class IconTile(Component):
     """Single icon tile component."""
     
-    def __init__(self, icon: Icon):
+    def __init__(self, *, icon: Icon):
         super().__init__()
         self.icon = icon
     
@@ -166,7 +166,7 @@ class IconTile(Component):
 class IconDetailPartial(Component):
     """Partial for icon details panel."""
     
-    def __init__(self, icon: Icon):
+    def __init__(self, *, icon: Icon):
         super().__init__()
         self.icon = icon
     

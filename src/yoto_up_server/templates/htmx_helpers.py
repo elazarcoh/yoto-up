@@ -15,7 +15,7 @@ from pydom import html as d
 class ClipboardCopyScript(Component):
     """Minimal script for copying text to clipboard."""
     
-    def __init__(self, source_id: str, success_message: str = "Copied!"):
+    def __init__(self, *, source_id: str, success_message: str = "Copied!"):
         super().__init__()
         self.source_id = source_id
         self.success_message = success_message
@@ -89,7 +89,7 @@ class FilePickerScript(Component):
 class SortableInitScript(Component):
     """Initialize Sortable.js for drag-and-drop reordering."""
     
-    def __init__(self, list_id: str, save_endpoint: str, handle_class: str = "drag-handle"):
+    def __init__(self, *, list_id: str, save_endpoint: str, handle_class: str = "drag-handle"):
         super().__init__()
         self.list_id = list_id
         self.save_endpoint = save_endpoint

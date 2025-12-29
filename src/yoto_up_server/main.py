@@ -5,29 +5,26 @@ This is the main entry point for the FastAPI-based web application.
 Run with: uvicorn yoto_up_server.main:app --reload
 """
 
-import asyncio
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import dotenv
 from fastapi import FastAPI, Request, encoders
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
-from pydom import render, html as d
-from pydom.element import Element
+from pydom import html as d
+from pydom import render
 from pydom.component import Component
-from dependency_injector.wiring import Provide
+from pydom.element import Element
 
 from yoto_up_server.container import Container
+from yoto_up_server.dependencies import AuthenticationError
 from yoto_up_server.logging_config import configure_logging
-from yoto_up_server.routers import auth, cards, icons, playlists, upload
+from yoto_up_server.middleware.session_middleware import SessionMiddleware
+from yoto_up_server.routers import auth, devices, icons, playlists
 from yoto_up_server.templates.base import render_page
 from yoto_up_server.templates.home import HomePage
-from yoto_up_server.dependencies import AuthenticationError
-from yoto_up_server.middleware.session_middleware import SessionMiddleware
-import dotenv
-
 
 # Application root directory
 APP_ROOT = Path(__file__).parent
@@ -104,31 +101,27 @@ async def authentication_error_handler(
     and redirecting to the login page.
     """
 
-    html_response = (
+    html_response = d.Div(
+        classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]"
+    )(
         d.Div(
-            classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]"
+            classes="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center",
         )(
-            d.Div(
-                classes="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center",
-            )(
-                d.H2(classes="text-xl font-bold text-gray-900 m-0 mb-4")(
-                    "Session Expired"
-                ),
-                d.P(classes="text-gray-600 m-0 mb-6 leading-relaxed")(
-                    "Your authentication session has expired. Please log in again."
-                ),
-                d.A(
-                    href="/auth",
-                    classes="inline-block px-6 py-2.5 bg-indigo-600 text-white rounded-md font-medium cursor-pointer no-underline transition-colors duration-200 hover:bg-indigo-700",
-                )("Go to Login"),
+            d.H2(classes="text-xl font-bold text-gray-900 m-0 mb-4")("Session Expired"),
+            d.P(classes="text-gray-600 m-0 mb-6 leading-relaxed")(
+                "Your authentication session has expired. Please log in again."
             ),
-            d.Script()("""//js
+            d.A(
+                href="/auth",
+                classes="inline-block px-6 py-2.5 bg-indigo-600 text-white rounded-md font-medium cursor-pointer no-underline transition-colors duration-200 hover:bg-indigo-700",
+            )("Go to Login"),
+        ),
+        d.Script()("""//js
                 // Auto-redirect to login page after 3 seconds
                 setTimeout(() => {
                     window.location.href = '/auth';
                 }, 3000);
             """),
-        ),
     )
     return HTMLResponse(
         content=render_page(
@@ -145,10 +138,9 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Include routers
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(cards.router, prefix="/cards", tags=["Cards"])
 app.include_router(icons.router, tags=["Icons"])
 app.include_router(playlists.router, prefix="/playlists", tags=["Playlists"])
-app.include_router(upload.router, prefix="/upload", tags=["Upload"])
+app.include_router(devices.router, prefix="/devices", tags=["Devices"])
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -43,41 +43,41 @@ class SessionAwareApiService:
         # Per-session API clients (keyed by session_id)
         self._api_clients: dict[str, YotoApiClient] = {}
         # Current session ID for this request (set by dependency)
-        self._current_session_id: str = None
+        self._current_session_id: str | None = None
 
-    def _get_session_id(self, session_id: str = None) -> str:
+    def _get_session_id(self, session_id: str | None = None) -> str:
         """
         Get session ID from parameter, current instance, or context variable.
-        
+
         Args:
             session_id: Explicit session ID (if provided)
-            
+
         Returns:
             Session ID
-            
+
         Raises:
             ValueError: If no session ID is available
         """
         if session_id:
             return session_id
-        
+
         # Try current session ID from dependency
         if self._current_session_id:
             return self._current_session_id
-        
+
         # Try to get from context variable
         ctx_session_id = _session_id_context.get()
         if ctx_session_id:
             return ctx_session_id
-            
+
         raise ValueError("session_id is required for API calls")
 
     def set_current_session_id(self, session_id: str) -> None:
         """
         Set the current session ID for this service instance.
-        
+
         Called by the dependency to bind the session for the request.
-        
+
         Args:
             session_id: Session ID for this request
         """
@@ -106,19 +106,12 @@ class SessionAwareApiService:
                 client.auth._token_data.access_token = access_token
             return client
 
-        # Create new API client for this session
-        # Use a dummy token file (we won't actually use it)
-        from pathlib import Path
-        import tempfile
-        
-        temp_token_file = Path(tempfile.gettempdir()) / f"session_{session_id[:8]}.json"
-        
-        client = YotoApiClient(config=self._config, token_file=temp_token_file)
-        
+        client = YotoApiClient(config=self._config)
+
         # Manually set token data via auth client
         from yoto_up.yoto_api_client import TokenData
         import time
-        
+
         client.auth._token_data = TokenData(
             access_token=access_token,
             refresh_token=None,  # Refresh tokens handled by session service
@@ -133,16 +126,16 @@ class SessionAwareApiService:
     async def get_client(self) -> YotoApiClient:
         """
         Get the YotoApiClient for the current session.
-        
+
         Returns:
             YotoApiClient configured with the current session's access token.
         """
         session_id = self._get_session_id()
         session = self.session_service.get_session(session_id)
-        
+
         if not session:
             raise ValueError(f"Session {session_id} not found in memory")
-            
+
         return await self.get_or_create_api_client(session_id, session.access_token)
 
     def remove_api_client(self, session_id: str) -> None:
@@ -153,17 +146,6 @@ class SessionAwareApiService:
             session_id: Session ID
         """
         if session_id in self._api_clients:
-            # Clean up temp token file if it exists
-            from pathlib import Path
-            import tempfile
-            
-            temp_token_file = Path(tempfile.gettempdir()) / f"session_{session_id[:8]}.json"
-            try:
-                if temp_token_file.exists():
-                    temp_token_file.unlink()
-            except Exception as e:
-                logger.warning(f"Failed to delete temp token file: {e}")
-            
             del self._api_clients[session_id]
             logger.debug(f"Removed API client for session: {session_id[:8]}...")
 
@@ -197,7 +179,9 @@ class SessionAwareApiService:
                 )
 
                 if response.status_code != 200:
-                    logger.error(f"Token refresh failed: {response.status_code} - {response.text}")
+                    logger.error(
+                        f"Token refresh failed: {response.status_code} - {response.text}"
+                    )
                     raise YotoAuthError(f"Token refresh failed: {response.status_code}")
 
                 token_data = response.json()
@@ -242,12 +226,17 @@ class SessionAwareApiService:
         Raises:
             YotoAuthError: If refresh fails
         """
-        logger.info(f"Rehydrating session from cookie: {cookie_payload.session_id[:8]}...")
+        logger.info(
+            f"Rehydrating session from cookie: {cookie_payload.session_id[:8]}..."
+        )
 
         # Refresh access token using cookie refresh token
-        access_token, access_expiry, new_refresh_token, refresh_expiry = (
-            await self.refresh_access_token(cookie_payload.refresh_token)
-        )
+        (
+            access_token,
+            access_expiry,
+            new_refresh_token,
+            refresh_expiry,
+        ) = await self.refresh_access_token(cookie_payload.refresh_token)
 
         # Rehydrate in-memory session
         self.session_service.rehydrate_session(
@@ -323,9 +312,12 @@ class SessionAwareApiService:
             YotoAuthError: If refresh fails
         """
         # Refresh access token
-        access_token, access_expiry, new_refresh_token, refresh_expiry = (
-            await self.refresh_access_token(refresh_token)
-        )
+        (
+            access_token,
+            access_expiry,
+            new_refresh_token,
+            refresh_expiry,
+        ) = await self.refresh_access_token(refresh_token)
 
         # Update in-memory session
         self.session_service.update_access_token(
@@ -405,163 +397,3 @@ class SessionAwareApiService:
                 self.remove_api_client(session_id)
 
         return count
-
-    def get_current_session_id_and_token(self) -> tuple[str, str]:
-        """
-        Get the current session ID and access token from context.
-        
-        This is a helper method for route handlers to get the current session context.
-        In a real implementation, this would use context variables.
-        
-        For now, this returns None and requires session_id to be passed explicitly.
-        """
-        # NOTE: This is a placeholder. The actual session context should come from
-        # the request context set by middleware.
-        return None, None
-
-    def clear_tokens(self, session_id: str = None) -> None:
-        """
-        Clear tokens for a session (on error or logout).
-
-        Args:
-            session_id: Session ID (optional, uses context if not provided)
-        """
-        try:
-            session_id = self._get_session_id(session_id)
-        except ValueError:
-            # No session_id available, nothing to clear
-            return
-
-        # Remove API client which clears the token data
-        self.remove_api_client(session_id)
-
-    # Proxy methods for YotoApiClient API calls
-    # ============================================================================
-
-    async def get_my_content(self) -> list:
-        """
-        Get user's content from Yoto API.
-        
-        Returns:
-            List of Card objects
-        """
-        client = await self.get_client()
-        return await client.get_my_content()
-
-    async def get_card(self, card_id: str) -> Optional:
-        """
-        Get a specific card by ID.
-        
-        Args:
-            card_id: Card ID to fetch
-            
-        Returns:
-            Card object or None if not found
-        """
-        client = await self.get_client()
-        return await client.get_card(card_id)
-
-    async def create_card(self, card):
-        """
-        Create a new card.
-        
-        Args:
-            card: Card object to create
-            
-        Returns:
-            Created Card object with ID
-        """
-        client = await self.get_client()
-        return await client.create_card(card)
-
-    async def update_card(self, card):
-        """
-        Update an existing card.
-        
-        Args:
-            card: Card object to update
-            
-        Returns:
-            Updated Card object
-        """
-        client = await self.get_client()
-        return await client.update_card(card)
-
-    async def delete_card(self, card_id: str) -> None:
-        """
-        Delete a card.
-        
-        Args:
-            card_id: Card ID to delete
-        """
-        client = await self.get_client()
-        return await client.delete_card(card_id)
-
-    async def get_public_icons(self, show_in_console: bool = True, refresh_cache: bool = False):
-        """
-        Get public (Yoto) icons.
-        
-        Args:
-            show_in_console: Whether to show in console
-            refresh_cache: Whether to refresh the cache
-            
-        Returns:
-            List of icon dictionaries
-        """
-        client = await self.get_client()
-        # Call the synchronous method from YotoApiClient's underlying API
-        if hasattr(client, 'api') and hasattr(client.api, 'get_public_icons'):
-            return client.api.get_public_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
-        return []
-
-    async def get_user_icons(self, show_in_console: bool = True, refresh_cache: bool = False):
-        """
-        Get user icons.
-        
-        Args:
-            show_in_console: Whether to show in console
-            refresh_cache: Whether to refresh the cache
-            
-        Returns:
-            List of icon dictionaries
-        """
-        client = await self.get_client()
-        # Call the synchronous method from YotoApiClient's underlying API
-        if hasattr(client, 'api') and hasattr(client.api, 'get_user_icons'):
-            return client.api.get_user_icons(show_in_console=show_in_console, refresh_cache=refresh_cache)
-        return []
-
-    async def search_cached_icons(self, query: str, fields: list = None, show_in_console: bool = True, include_yotoicons: bool = True):
-        """
-        Search cached icons.
-        
-        Args:
-            query: Search query
-            fields: Fields to search
-            show_in_console: Whether to show in console
-            include_yotoicons: Whether to include YotoIcons
-            
-        Returns:
-            List of matching icon dictionaries
-        """
-        client = await self.get_client()
-        # Call the synchronous method from YotoApiClient's underlying API
-        if hasattr(client, 'api') and hasattr(client.api, 'search_cached_icons'):
-            return client.api.search_cached_icons(query=query, fields=fields, show_in_console=show_in_console, include_yotoicons=include_yotoicons)
-        return []
-
-    async def get_icon_b64_data(self, icon_field: str):
-        """
-        Get icon data as base64.
-        
-        Args:
-            icon_field: Icon field (yoto:#<mediaId>)
-            
-        Returns:
-            Base64 encoded image data or None
-        """
-        client = await self.get_client()
-        # Call the synchronous method from YotoApiClient's underlying API
-        if hasattr(client, 'api') and hasattr(client.api, 'get_icon_b64_data'):
-            return client.api.get_icon_b64_data(icon_field)
-        return None

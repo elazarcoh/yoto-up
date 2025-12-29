@@ -6,11 +6,9 @@ Handles playlist (card library) listing and management.
 
 import pathlib
 import tempfile
-from pathlib import Path
 from typing import Annotated, Any, Dict, List, Optional
 
 import httpx
-from pydom import html as d
 from fastapi import (
     APIRouter,
     File,
@@ -23,11 +21,10 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
+from pydom import html as d
 
-from yoto_up.models import Card, ChapterDisplay
-from yoto_up.yoto_api_client import TrackDisplay, YotoApiClient
+from yoto_up.models import Card, ChapterDisplay, TrackDisplay
 from yoto_up_server.dependencies import (
-    AuthenticatedSessionApiDep,
     ContainerDep,
     IconServiceDep,
     UploadProcessingServiceDep,
@@ -42,17 +39,14 @@ from yoto_up_server.models import (
     PlaylistUploadSessionsResponse,
     ReorderChaptersRequest,
     ReorderChaptersResponse,
-    UpdateChapterIconRequest,
-    UpdateChapterIconResponse,
     UploadSessionInitRequest,
     UploadSessionResponse,
     UploadSessionStatusResponse,
     UploadStatus,
 )
 from yoto_up_server.templates.base import render_page, render_partial
-from yoto_up_server.templates.components import ChapterItem
+from yoto_up_server.templates.playlist_components import ChapterItem
 from yoto_up_server.templates.icon_components import (
-    IconGridPartial,
     IconSidebarPartial,
 )
 from yoto_up_server.templates.playlist_detail_refactored import (
@@ -322,7 +316,7 @@ async def update_playlist_items_icon(
     icon_id: str = Form(...),
     chapter_ids: List[int] = Form(default=[]),
     track_ids: List[tuple[int, int]] = Form(default=[]),
-) :
+):
     """
     Update icons for multiple chapters/tracks.
     """
@@ -346,7 +340,7 @@ async def update_playlist_items_icon(
     icon_val = resolved_icon_id
     if not icon_val.startswith("yoto:#"):
         icon_val = f"yoto:#{icon_val}"
-    
+
     logger.debug(f"Resolved icon value: {icon_val!r} (length: {len(icon_val)})")
 
     tracks_by_chapter: Dict[int, List[int]] = {}
@@ -457,6 +451,7 @@ async def reorder_chapters(
 async def delete_selected_chapters(
     request: Request,
     playlist_id: Annotated[str, Path()],
+    chapter_ids: Annotated[List[int], Form()],
     yoto_client: YotoClientDep,
 ) -> str:
     """
@@ -468,22 +463,10 @@ async def delete_selected_chapters(
     Returns updated chapters list partial.
     """
     try:
-        # Parse form data to get selected chapter indices
-        form_data = await request.form()
-
-        # Get all values with key 'chapter_id' - HTMX includes checked checkboxes with their name/value
-        selected_indices = []
-        for key, value in form_data.items():
-            if key == "chapter_id":
-                try:
-                    selected_indices.append(int(value))
-                except (ValueError, TypeError):
-                    continue
-
-        if not selected_indices:
+        if not chapter_ids:
             raise HTTPException(status_code=400, detail="No chapters selected")
 
-        logger.info(f"Deleting chapters {selected_indices} from playlist {playlist_id}")
+        logger.info(f"Deleting chapters {chapter_ids} from playlist {playlist_id}")
 
         # Fetch the card
         card: Optional[Card] = await yoto_client.get_card(playlist_id)
@@ -500,24 +483,24 @@ async def delete_selected_chapters(
         chapters = card.content.chapters
 
         # Validate all indices
-        for idx in selected_indices:
+        for idx in chapter_ids:
             if not isinstance(idx, int) or idx < 0 or idx >= len(chapters):
                 raise HTTPException(
                     status_code=400, detail=f"Invalid chapter index: {idx}"
                 )
 
         # Sort indices in descending order to avoid shifting issues
-        selected_indices_sorted = sorted(selected_indices, reverse=True)
+        chapter_ids_sorted = sorted(chapter_ids, reverse=True)
 
         # Delete chapters starting from the highest index
-        for idx in selected_indices_sorted:
+        for idx in chapter_ids_sorted:
             chapters.pop(idx)
 
         # Save the updated card
         await yoto_client.update_card(card)
 
         logger.info(
-            f"Successfully deleted {len(selected_indices)} chapters from playlist {playlist_id}"
+            f"Successfully deleted {len(chapter_ids)} chapters from playlist {playlist_id}"
         )
 
         # Return updated chapters list - just the <ul> element for HTMX to swap
@@ -627,7 +610,7 @@ async def create_upload_session(
     playlist_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
     upload_request: UploadSessionInitRequest,
 ) -> UploadSessionResponse:
     """
@@ -653,7 +636,7 @@ async def create_upload_session(
             upload_request.similarity_threshold = 0.75
 
         # Verify the playlist exists
-        card = await session_api.get_card(playlist_id)
+        card = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
@@ -699,7 +682,7 @@ async def upload_file_to_session(
     *,
     upload_session_service: UploadSessionServiceDep,
     upload_processing_service: UploadProcessingServiceDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> FileUploadResponse:
     """
     Upload a single file to an upload session.
@@ -804,7 +787,7 @@ async def get_upload_session_status(
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> UploadSessionStatusResponse:
     """
     Get the status of an upload session and all its files.
@@ -848,7 +831,7 @@ async def get_playlist_upload_sessions(
     playlist_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> PlaylistUploadSessionsResponse:
     """
     Get all active upload sessions for a playlist.
@@ -890,7 +873,7 @@ async def delete_upload_session(
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> DeleteUploadSessionResponse:
     """
     Delete an upload session and clean up temp files.
@@ -943,7 +926,7 @@ async def stop_upload_session(
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> DeleteUploadSessionResponse:
     """
     Stop an upload session that is currently processing.
@@ -998,7 +981,7 @@ async def stop_upload_session(
 async def toggle_edit_mode(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
     enable: Annotated[bool, Query(description="Enable or disable edit mode")] = True,
 ) -> str:
     """
@@ -1019,7 +1002,7 @@ async def toggle_edit_mode(
 async def get_upload_modal(
     request: Request,
     playlist_id: Annotated[str, Path()],
-    session_api: AuthenticatedSessionApiDep,
+    yoto_client: YotoClientDep,
 ) -> str:
     """
     Get upload modal HTML.

@@ -7,7 +7,7 @@ from pydom import Component
 from pydom import html as d
 
 from yoto_up.models import Card
-from yoto_up_server.templates.components import ChapterItem
+from yoto_up_server.templates.playlist_components import ChapterItem
 from yoto_up_server.templates.htmx_helpers import (
     ClipboardCopyScript,
     FilePickerScript,
@@ -20,7 +20,7 @@ from yoto_up_server.templates.htmx_helpers import (
 class PlaylistDetailRefactored(Component):
     """Refactored playlist detail page using HTMX principles."""
     
-    def __init__(self, card: Card, playlist_id: str = ""):
+    def __init__(self, *, card: Card, playlist_id: str = ""):
         super().__init__()
         self.card = card
         self.playlist_id = playlist_id
@@ -382,7 +382,7 @@ class PlaylistDetailRefactored(Component):
 class EditControlsPartial(Component):
     """Edit mode controls - shown when edit mode is active."""
     
-    def __init__(self, playlist_id: str, edit_mode_active: bool = True):
+    def __init__(self, *, playlist_id: str, edit_mode_active: bool = True):
         super().__init__()
         self.playlist_id = playlist_id
         self.edit_mode_active = edit_mode_active

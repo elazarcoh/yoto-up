@@ -21,9 +21,10 @@ htmx = HTMX()
 
 class BaseLayout(Component):
     """Base HTML layout with HTMX and navigation."""
-    
+
     def __init__(
         self,
+        *,
         title: str = "Yoto Up",
         content: Optional[Renderable] = None,
         is_authenticated: bool = False,
@@ -31,7 +32,7 @@ class BaseLayout(Component):
         self.title = title
         self.content = content
         self.is_authenticated = is_authenticated
-    
+
     def render(self):
         return d.Html(lang="en")(
             d.Head()(
@@ -44,7 +45,9 @@ class BaseLayout(Component):
                 htmx.script(),
                 HtmxExtensions.sse.script(),
                 # Alpine.js for simple interactivity
-                d.Script(src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True),
+                d.Script(
+                    src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True
+                ),
                 # App JavaScript
                 d.Script(src="/static/js/app.js", defer=True),
                 # Custom styles
@@ -78,7 +81,9 @@ class BaseLayout(Component):
                 # Navigation
                 Navigation(is_authenticated=self.is_authenticated),
                 # Main content
-                d.Main(classes="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full")(
+                d.Main(
+                    classes="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full"
+                )(
                     self.content or d.Div()("No content"),
                 ),
                 # Footer
@@ -86,13 +91,22 @@ class BaseLayout(Component):
                     d.Div(classes="max-w-7xl mx-auto px-4 text-center")(
                         d.Span()("Yoto Up Server"),
                         d.Span()(" | "),
-                        d.A(href="https://github.com/xkjq/yoto-up", target="_blank", classes="text-gray-300 hover:text-white")("GitHub"),
+                        d.A(
+                            href="https://github.com/xkjq/yoto-up",
+                            target="_blank",
+                            classes="text-gray-300 hover:text-white",
+                        )("GitHub"),
                     ),
                 ),
                 # Loading indicator
-                d.Div(id="global-loading", classes="htmx-indicator hidden fixed inset-0 bg-gray-500/75 flex items-center justify-center z-50")(
+                d.Div(
+                    id="global-loading",
+                    classes="htmx-indicator hidden fixed inset-0 bg-gray-500/75 flex items-center justify-center z-50",
+                )(
                     d.Div(classes="flex flex-col items-center")(
-                        d.Div(classes="animate-spin h-10 w-10 border-4 border-indigo-500 rounded-full border-t-transparent mb-4"),
+                        d.Div(
+                            classes="animate-spin h-10 w-10 border-4 border-indigo-500 rounded-full border-t-transparent mb-4"
+                        ),
                         d.Span(classes="text-white font-medium")("Loading..."),
                     ),
                 ),
@@ -102,37 +116,43 @@ class BaseLayout(Component):
 
 class Navigation(Component):
     """Navigation component."""
-    
-    def __init__(self, is_authenticated: bool = False) -> None:
+
+    def __init__(self, *, is_authenticated: bool = False) -> None:
         self.is_authenticated = is_authenticated
-    
+
     def render(self):
         nav_items = [
             ("Home", "/"),
         ]
-        
+
         if self.is_authenticated:
-            nav_items.extend([
-                ("Playlists", "/playlists/"),
-                # ("Upload", "/upload/"),
-                # ("Icons", "/icons/"),
-                # ("Cards", "/cards/"),
-            ])
-        
+            nav_items.extend(
+                [
+                    ("Playlists", "/playlists/"),
+                    ("Devices", "/devices/"),
+                    # ("Upload", "/upload/"),
+                    # ("Icons", "/icons/"),
+                    # ("Cards", "/cards/"),
+                ]
+            )
+
         return d.Nav(classes="bg-white shadow")(
             d.Div(classes="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8")(
                 d.Div(classes="flex justify-between h-16")(
                     d.Div(classes="flex")(
-                        d.A(href="/", classes="flex-shrink-0 flex items-center text-indigo-600 font-bold text-xl")(
+                        d.A(
+                            href="/",
+                            classes="flex-shrink-0 flex items-center text-indigo-600 font-bold text-xl",
+                        )(
                             d.Span(classes="mr-2 text-2xl")("🎵"),
                             d.Span()("Yoto Up"),
                         ),
                         d.Div(classes="hidden sm:ml-6 sm:flex sm:space-x-8")(
                             *[
                                 d.A(
-                                    href=url, 
+                                    href=url,
                                     hx_boost="true",
-                                    classes="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+                                    classes="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium",
                                 )(label)
                                 for label, url in nav_items
                             ]
@@ -140,15 +160,15 @@ class Navigation(Component):
                     ),
                     d.Div(classes="flex items-center")(
                         d.A(
-                            href="/auth/logout", 
-                            hx_post="/auth/logout", 
+                            href="/auth/logout",
+                            hx_post="/auth/logout",
                             hx_swap="none",
-                            classes="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium"
+                            classes="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium",
                         )("Logout")
                         if self.is_authenticated
                         else d.A(
                             href="/auth/",
-                            classes="text-indigo-600 hover:text-indigo-900 px-3 py-2 rounded-md text-sm font-medium"
+                            classes="text-indigo-600 hover:text-indigo-900 px-3 py-2 rounded-md text-sm font-medium",
                         )("Login")
                     ),
                 ),
@@ -158,9 +178,10 @@ class Navigation(Component):
 
 class Alert(Component):
     """Alert message component."""
-    
+
     def __init__(
         self,
+        *,
         message: str,
         type: str = "info",  # info, success, warning, error
         dismissible: bool = True,
@@ -168,7 +189,7 @@ class Alert(Component):
         self.message = message
         self.type = type
         self.dismissible = dismissible
-    
+
     def render(self):
         colors = {
             "info": "bg-blue-50 text-blue-700",
@@ -177,7 +198,7 @@ class Alert(Component):
             "error": "bg-red-50 text-red-700",
         }
         color_class = colors.get(self.type, colors["info"])
-        
+
         close_btn = (
             d.Button(
                 classes="ml-auto -mx-1.5 -my-1.5 rounded-lg focus:ring-2 focus:ring-blue-400 p-1.5 inline-flex h-8 w-8 text-blue-500 hover:bg-blue-200",
@@ -186,8 +207,10 @@ class Alert(Component):
             if self.dismissible
             else None
         )
-        
-        return d.Div(classes=f"rounded-md p-4 mb-4 flex items-center {color_class}", role="alert")(
+
+        return d.Div(
+            classes=f"rounded-md p-4 mb-4 flex items-center {color_class}", role="alert"
+        )(
             d.Span(classes="flex-grow")(self.message),
             close_btn,
         )
@@ -195,9 +218,10 @@ class Alert(Component):
 
 class Card(Component):
     """Card container component."""
-    
+
     def __init__(
         self,
+        *,
         title: Optional[str] = None,
         content: Optional[Component] = None,
         footer: Optional[Component] = None,
@@ -205,7 +229,7 @@ class Card(Component):
         self.title = title
         self.content = content
         self.footer = footer
-    
+
     def render(self):
         header = (
             d.Div(classes="px-4 py-5 sm:px-6 border-b border-gray-200")(
@@ -214,13 +238,15 @@ class Card(Component):
             if self.title
             else None
         )
-        
+
         footer_el = (
-            d.Div(classes="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200")(self.footer)
+            d.Div(classes="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200")(
+                self.footer
+            )
             if self.footer
             else None
         )
-        
+
         return d.Div(classes="bg-white overflow-hidden shadow rounded-lg mb-6")(
             header,
             d.Div(classes="px-4 py-5 sm:p-6")(self.content) if self.content else None,
@@ -230,34 +256,40 @@ class Card(Component):
 
 class LoadingSpinner(Component):
     """Loading spinner component."""
-    
-    def __init__(self, text: str = "Loading...") -> None:
+
+    def __init__(self, *, text: str = "Loading...") -> None:
         self.text = text
-    
+
     def render(self):
         return d.Div(classes="flex items-center space-x-2")(
-            d.Div(classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"),
+            d.Div(
+                classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
+            ),
             d.Span(classes="text-gray-500")(self.text),
         )
 
 
 class ProgressBar(Component):
     """Progress bar component."""
-    
-    def __init__(self, progress: float = 0.0, label: Optional[str] = None) -> None:
+
+    def __init__(self, *, progress: float = 0.0, label: Optional[str] = None) -> None:
         self.progress = max(0, min(100, progress * 100))
         self.label = label
-    
+
     def render(self):
         return d.Div(classes="w-full")(
             d.Div(classes="flex justify-between mb-1")(
-                d.Span(classes="text-sm font-medium text-indigo-700")(self.label) if self.label else None,
-                d.Span(classes="text-sm font-medium text-indigo-700")(f"{self.progress:.0f}%"),
+                d.Span(classes="text-sm font-medium text-indigo-700")(self.label)
+                if self.label
+                else None,
+                d.Span(classes="text-sm font-medium text-indigo-700")(
+                    f"{self.progress:.0f}%"
+                ),
             ),
             d.Div(classes="w-full bg-gray-200 rounded-full h-2.5")(
                 d.Div(
                     classes="bg-indigo-600 h-2.5 rounded-full transition-all duration-300",
-                    style=f"width: {self.progress}%"
+                    style=f"width: {self.progress}%",
                 ),
             ),
         )
@@ -265,19 +297,19 @@ class ProgressBar(Component):
 
 def render_page(
     title: str,
-    content: Component,
+    content: Renderable,
     request: Request,
     is_authenticated: Optional[bool] = None,
 ) -> str:
     """
     Render a full HTML page.
-    
+
     Args:
         title: Page title.
         content: Main content component.
         request: FastAPI request object.
         is_authenticated: Override authentication status.
-    
+
     Returns:
         Rendered HTML string.
     """
@@ -286,45 +318,52 @@ def render_page(
         try:
             # Try to get session_id from request state (set by middleware)
             session_id = getattr(request.state, "session_id", None)
-            
+
             # If not in state, try to get from cookies
             if not session_id:
-                from yoto_up_server.middleware.session_middleware import SESSION_COOKIE_NAME
+                from yoto_up_server.middleware.session_middleware import (
+                    SESSION_COOKIE_NAME,
+                )
+
                 cookie_value = request.cookies.get(SESSION_COOKIE_NAME)
                 if cookie_value:
                     # Validate and decrypt cookie to get session_id
                     container: Container = request.app.state.container
                     session_service = container.session_service()
-                    cookie_payload = session_service.validate_and_decrypt_cookie(cookie_value)
+                    cookie_payload = session_service.validate_and_decrypt_cookie(
+                        cookie_value
+                    )
                     if cookie_payload:
                         session_id = cookie_payload.session_id
-            
+
             # Check if session is authenticated
             if session_id:
                 container: Container = request.app.state.container
                 session_api_service = container.session_aware_api_service()
-                is_authenticated = session_api_service.is_session_authenticated(session_id)
+                is_authenticated = session_api_service.is_session_authenticated(
+                    session_id
+                )
             else:
                 is_authenticated = False
         except Exception:
             is_authenticated = False
-    
+
     layout = BaseLayout(
         title=title,
         content=content,
         is_authenticated=is_authenticated,
     )
-    
+
     return render(layout)
 
 
-def render_partial(content: Union[Component, str]) -> str:
+def render_partial(content: Union[Renderable, str]) -> str:
     """
     Render an HTML partial (for HTMX responses).
-    
+
     Args:
         content: Component or raw HTML string.
-    
+
     Returns:
         Rendered HTML string.
     """

@@ -14,6 +14,7 @@ from yoto_up_server.services.audio_processor import AudioProcessorService
 from yoto_up_server.services.icon_service import IconService
 from yoto_up_server.services.upload_session_service import UploadSessionService
 from yoto_up_server.services.upload_processing_service import UploadProcessingService
+from yoto_up_server.services.mqtt_service import MqttService
 
 
 def get_encryption_key() -> bytes:
@@ -52,10 +53,9 @@ class Container(containers.DeclarativeContainer):
     wiring_config = containers.WiringConfiguration(
         modules=[
             "yoto_up_server.routers.auth",
-            "yoto_up_server.routers.cards",
             "yoto_up_server.routers.icons",
             "yoto_up_server.routers.playlists",
-            "yoto_up_server.routers.upload",
+            "yoto_up_server.routers.devices",
             "yoto_up_server.dependencies",
             "yoto_up_server.middleware.session_middleware",
         ]
@@ -105,4 +105,9 @@ class Container(containers.DeclarativeContainer):
         init_upload_processing_service,
         audio_processor=audio_processor,
         upload_session_service=upload_session_service,
+    )
+
+    mqtt_service = providers.Singleton(
+        MqttService,
+        api_service=session_aware_api_service,
     )

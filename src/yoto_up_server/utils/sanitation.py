@@ -20,3 +20,8 @@ def sanitize_filename(filename: str) -> str:
 
     # Limit length to 255 characters
     return sanitized[:255]
+
+
+def html_id_safe(s: str) -> str:
+    """Convert a string to a safe HTML ID by replacing unsafe characters."""
+    return s.replace(" ", "-").replace("#", "%23").replace("/", "-").replace(":", "-")

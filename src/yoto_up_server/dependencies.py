@@ -13,6 +13,7 @@ from loguru import logger
 
 from yoto_up.yoto_api_client import YotoApiClient
 from yoto_up_server.container import Container
+from yoto_up_server.services.mqtt_service import MqttService
 from yoto_up_server.services.session_service import SessionService
 from yoto_up_server.services.session_aware_api_service import SessionAwareApiService
 from yoto_up_server.middleware.session_middleware import (
@@ -61,7 +62,9 @@ def get_container(request: Request) -> Container:
 
 
 ContainerDep = Annotated[Container, Depends(get_container)]
-SessionServiceDep = Annotated[SessionService, ContainerDepends(Container.session_service)]
+SessionServiceDep = Annotated[
+    SessionService, ContainerDepends(Container.session_service)
+]
 SessionAwareApiServiceDep = Annotated[
     SessionAwareApiService, ContainerDepends(Container.session_aware_api_service)
 ]
@@ -77,6 +80,7 @@ UploadProcessingServiceDep = Annotated[
     UploadProcessingService, ContainerDepends(Container.upload_processing_service)
 ]
 IconServiceDep = Annotated[IconService, ContainerDepends(Container.icon_service)]
+MqttServiceDep = Annotated[MqttService, ContainerDepends(Container.mqtt_service)]
 
 
 def get_session_id(request: Request) -> str:
@@ -121,13 +125,17 @@ async def require_session_auth(
     if session:
         # Check if access token expired
         if session.is_access_token_expired():
-            logger.info(f"Access token expired for session: {session_id[:8]}..., refreshing")
+            logger.info(
+                f"Access token expired for session: {session_id[:8]}..., refreshing"
+            )
 
             try:
                 # Refresh access token
-                new_cookie_payload = await session_api_service.refresh_session_access_token(
-                    session_id=session_id,
-                    refresh_token=cookie_payload.refresh_token,
+                new_cookie_payload = (
+                    await session_api_service.refresh_session_access_token(
+                        session_id=session_id,
+                        refresh_token=cookie_payload.refresh_token,
+                    )
                 )
 
                 # Update cookie with rotated refresh token
@@ -153,9 +161,10 @@ async def require_session_auth(
 
     try:
         # Rehydrate session from cookie
-        rehydrated_session_id, new_cookie_payload = (
-            await session_api_service.rehydrate_session_from_cookie(cookie_payload)
-        )
+        (
+            rehydrated_session_id,
+            new_cookie_payload,
+        ) = await session_api_service.rehydrate_session_from_cookie(cookie_payload)
 
         # Update cookie with rotated refresh token
         set_session_cookie(
@@ -166,7 +175,7 @@ async def require_session_auth(
         )
 
         logger.info(f"Session rehydrated: {rehydrated_session_id[:8]}...")
-        
+
         # Set current session ID on service for this request
         session_api_service.set_current_session_id(rehydrated_session_id)
         return session_api_service
@@ -176,7 +185,9 @@ async def require_session_auth(
         raise AuthenticationError("Session rehydration failed") from e
 
 
-AuthenticatedSessionApiDep = Annotated[SessionAwareApiService, Depends(require_session_auth)]
+AuthenticatedSessionApiDep = Annotated[
+    SessionAwareApiService, Depends(require_session_auth)
+]
 
 
 async def get_yoto_client(
@@ -184,7 +195,7 @@ async def get_yoto_client(
 ) -> YotoApiClient:
     """
     Get the YotoApiClient for the current authenticated session.
-    
+
     This dependency ensures the user is authenticated and returns a configured client.
     """
     return await session_api.get_client()

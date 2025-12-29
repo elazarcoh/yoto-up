@@ -77,6 +77,8 @@ server = [
   "itsdangerous>=2.1.0",
   "cryptography>=46.0.3",
   "python-dotenv>=1.2.1",
+  "selectolax>=0.4.6",
+  "aiomqtt>=2.0.0",
 ]
 
 # Web target: keep minimal/browser-compatible deps. Avoid native audio and
