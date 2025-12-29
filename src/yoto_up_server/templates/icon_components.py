@@ -11,6 +11,112 @@ from pydom import html as d
 from yoto_up_server.models import DisplayIcon
 
 
+class PaginationControls(Component):
+    """Pagination controls for icon grids."""
+
+    def __init__(
+        self,
+        page: int,
+        per_page: int,
+        total: int,
+        source: List[str] | str,
+        query: Optional[str] = None,
+        fuzzy: bool = True,
+        target_id: Optional[str] = None,
+    ):
+        super().__init__()
+        self.page = page
+        self.per_page = per_page
+        self.total = total
+        self.source = source if isinstance(source, list) else [source]
+        self.query = query
+        self.fuzzy = fuzzy
+        self.total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+        self.target_id = target_id or "official-icons-section"
+
+    def _build_query_string(self, page: int) -> str:
+        """Build query string for pagination link."""
+        params = []
+        for s in self.source:
+            # Handle both enum and string values
+            if hasattr(s, 'value'):
+                source_val: str = s.value  # type: ignore
+            else:
+                source_val = str(s)
+            params.append(f"source={source_val}")
+        params.append(f"page={page}")
+        params.append(f"per_page={self.per_page}")
+        if self.query:
+            params.append(f"query={self.query}")
+        if not self.fuzzy:
+            params.append("fuzzy=false")
+        return "&".join(params)
+
+    def render(self):
+        # Don't show pagination if only 1 page or less
+        if self.total_pages <= 1:
+            return d.Fragment()()
+
+        prev_page = self.page - 1
+        next_page = self.page + 1
+        has_prev = self.page > 1
+        has_next = self.page < self.total_pages
+
+        # Build pagination buttons - only include HTMX attrs if enabled
+        buttons = []
+        
+        # Previous button
+        if has_prev:
+            buttons.append(
+                d.Button(
+                    classes="px-4 py-2 text-sm font-medium rounded-lg border border-indigo-300 bg-white text-indigo-600 hover:bg-indigo-50 hover:border-indigo-400 transition-colors cursor-pointer",
+                    type="button",
+                    hx_get=f"/icons/grid?{self._build_query_string(prev_page)}",
+                    hx_target=f"#{self.target_id}",
+                    hx_swap="innerHTML",
+                )("← Previous")
+            )
+        else:
+            buttons.append(
+                d.Button(
+                    classes="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed",
+                    type="button",
+                    disabled=True,
+                )("← Previous")
+            )
+
+        # Page info with better styling
+        buttons.append(
+            d.Div(classes="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg")(
+                f"{self.page} / {self.total_pages}"
+            )
+        )
+
+        # Next button
+        if has_next:
+            buttons.append(
+                d.Button(
+                    classes="px-4 py-2 text-sm font-medium rounded-lg border border-indigo-300 bg-white text-indigo-600 hover:bg-indigo-50 hover:border-indigo-400 transition-colors cursor-pointer",
+                    type="button",
+                    hx_get=f"/icons/grid?{self._build_query_string(next_page)}",
+                    hx_target=f"#{self.target_id}",
+                    hx_swap="innerHTML",
+                )("Next →")
+            )
+        else:
+            buttons.append(
+                d.Button(
+                    classes="px-4 py-2 text-sm font-medium rounded-lg border border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed",
+                    type="button",
+                    disabled=True,
+                )("Next →")
+            )
+
+        return d.Div(classes="col-span-4 flex items-center justify-center gap-3 mt-6 pt-6 border-t border-gray-200")(
+            *buttons
+        )
+
+
 class IconGridPartial(Component):
     """Server-rendered icon grid for selection via HTMX form submission."""
 
@@ -19,11 +125,43 @@ class IconGridPartial(Component):
         icons: List[DisplayIcon],
         title: str = "Icons",
         use_lazy_loading: bool = False,
+        total: int = 0,
+        page: int = 1,
+        per_page: int = 50,
+        source: List[str] | str | None = None,
+        query: Optional[str] = None,
+        fuzzy: bool = True,
     ):
         super().__init__()
         self.icons = icons
         self.title = title
         self.use_lazy_loading = use_lazy_loading
+        self.total = total
+        self.page = page
+        self.per_page = per_page
+        self.source = source
+        self.query = query
+        self.fuzzy = fuzzy
+
+    def _get_target_id(self) -> str:
+        """Determine the target ID based on source."""
+        source_list = self.source if isinstance(self.source, list) else [self.source] if self.source else []
+        if not source_list:
+            return "official-icons-section"
+        
+        # Get string representation of first source
+        first_source = source_list[0]
+        if hasattr(first_source, 'value'):
+            source_str = str(first_source.value).lower()  # type: ignore
+        else:
+            source_str = str(first_source).lower()
+        
+        if "user" in source_str:
+            return "user-icons-section"
+        elif any(x in source_str for x in ["yotoicons", "online", "cached"]):
+            return "yotoicons-section"
+        else:
+            return "official-icons-section"
 
     def render(self):
         if not self.icons:
@@ -31,14 +169,34 @@ class IconGridPartial(Component):
                 "No icons found"
             )
 
-        return d.Fragment()(
+        # Convert source to string list if needed
+        source_list = self.source if isinstance(self.source, list) else [self.source] if self.source else []
+
+        # Build title with icon count
+        title_text = f"{self.title} ({self.total})" if self.total else f"{self.title} ({len(self.icons)})"
+
+        # Build content
+        content = [
             d.Div(classes="col-span-4 mb-4")(
-                d.H4(classes="font-semibold text-gray-700")(
-                    f"{self.title} ({len(self.icons)})"
-                )
+                d.H4(classes="font-semibold text-gray-700")(title_text)
             ),
             *[self._render_icon(icon) for icon in self.icons],
-        )
+        ]
+        
+        # Add pagination controls if we have total info and multiple pages
+        if self.total > 0:
+            pagination = PaginationControls(
+                page=self.page,
+                per_page=self.per_page,
+                total=self.total,
+                source=source_list,
+                query=self.query,
+                fuzzy=self.fuzzy,
+                target_id=self._get_target_id(),
+            )
+            content.append(pagination)
+
+        return d.Fragment()(*content)
 
     def _render_icon(self, icon: DisplayIcon):
         """Render a single icon as a submit button in a form."""
@@ -111,7 +269,7 @@ class IconSidebarPartial(Component):
                             name="query",
                             placeholder="Search cached icons...",
                             classes="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500",
-                            hx_get="/icons/grid?source=cached&limit=50",
+                            hx_get="/icons/grid?source=cached&page=1&per_page=12",
                             hx_trigger="keyup changed delay:500ms",
                             hx_target="#yotoicons-section",
                             hx_swap="innerHTML",
@@ -121,7 +279,7 @@ class IconSidebarPartial(Component):
                         d.Button(
                             classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 whitespace-nowrap",
                             type="button",
-                            hx_get="/icons/grid?source=online&limit=50",
+                            hx_get="/icons/grid?source=online&page=1&per_page=12",
                             hx_include="#icon-search-input",
                             hx_target="#yotoicons-section",
                             hx_swap="innerHTML",
@@ -142,20 +300,20 @@ class IconSidebarPartial(Component):
                     classes="grid grid-cols-4 gap-3 empty:hidden",
                 )(),
                 
-                # User icons grid (max 16)
+                # User icons grid
                 d.Div(
                     id="user-icons-section",
-                    hx_get="/icons/grid?source=user&limit=16",
+                    hx_get="/icons/grid?source=user&page=1&per_page=12",
                     hx_trigger="load",
                     hx_target="this",
                     hx_swap="innerHTML",
                     classes="grid grid-cols-4 gap-3",
                 )(),
                 
-                # Official icons grid (max 50) - also acts as local search results container
+                # Official icons grid - also acts as local search results container
                 d.Div(
                     id="official-icons-section",
-                    hx_get="/icons/grid?source=official&limit=50",
+                    hx_get="/icons/grid?source=official&page=1&per_page=12",
                     hx_trigger="load",
                     hx_target="this",
                     hx_swap="innerHTML",

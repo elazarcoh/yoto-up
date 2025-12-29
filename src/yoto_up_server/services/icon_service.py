@@ -150,7 +150,7 @@ class YotoIconsSearcher:
         return icons
 
     async def search(
-        self, query: str, limit: int = 50, max_pages: int = 3
+        self, query: str, max_pages: int = 5
     ) -> List[YotoIconsSearchResult]:
         """Search for icons using multiple pages in parallel."""
         import asyncio
@@ -169,7 +169,7 @@ class YotoIconsSearcher:
         # Sort by downloads as a proxy for quality/popularity
         all_icons.sort(key=lambda x: x.downloads, reverse=True)
 
-        return all_icons[:limit]
+        return all_icons
 
 
 class IconEntry(BaseModel):
@@ -619,18 +619,22 @@ class IconService:
         sources: List[IconRetrieveSource],
         query: Optional[str] = None,
         fuzzy: bool = True,
-        limit: int = 100,
-    ) -> List[DisplayIcon]:
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[List[DisplayIcon], int]:
         """
-        Get a list of icons with advanced search.
+        Get a list of icons with advanced search and pagination.
 
         Args:
             api_client: API client for manifest loading
-            source: Icon source (user, official, yotoicons, yotoicons_cache)
+            sources: Icon sources (user, official, yotoicons, yotoicons_cache)
             query: Search query for titles
-            tags: Filter by tags
             fuzzy: Use fuzzy matching on titles
-            limit: Maximum results
+            page: Page number (1-indexed)
+            per_page: Results per page
+            
+        Returns:
+            Tuple of (list of icons for this page, total count)
         """
         await self._ensure_public_icons_manifest(api_client)
         await self._ensure_user_icon_manifest(api_client)
@@ -643,17 +647,24 @@ class IconService:
         if any(s in sources for s in ALL_ONLINE_SOURCES):
             online_sources = [s for s in sources if s in ALL_ONLINE_SOURCES]
             if not query:
-                return []
-            icons = await self.search_online(query, online_sources=online_sources, limit=limit)
+                return [], 0
+            icons = await self.search_online(query, online_sources=online_sources)
             # Add to cache for future access
             if icons:
                 self._search_service.add_yotoicons_to_cache(icons)
-            return icons
+            # Apply pagination
+            total = len(icons)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            return icons[start_idx:end_idx], total
 
         # User icons
         if IconRetrieveSource.USER in sources:
             icons = self._user_manifest.displayIcons if self._user_manifest else []
-            return icons[:limit]
+            total = len(icons)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+            return icons[start_idx:end_idx], total
 
         # Use search service for official and yotoicons_cache
         if IconRetrieveSource.CACHED in sources:
@@ -665,37 +676,37 @@ class IconService:
             search_sources.append(SearchSource.YOTOICONS)
 
         if not search_sources:
-            return []
+            return [], 0
         
-        # Perform search
-        icons = self._search_service.search(
+        # Perform search with pagination
+        icons, total = self._search_service.search(
             query=query,
             fuzzy=fuzzy,
             sources=search_sources,
-            limit=limit,
+            page=page,
+            per_page=per_page,
         )
 
-        return icons
+        return icons, total
 
-    async def search_online(self, query: str, online_sources: List[IconRetrieveSource], limit: int = 50) -> List[DisplayIcon]:
+    async def search_online(self, query: str, online_sources: List[IconRetrieveSource]) -> List[DisplayIcon]:
         """Search yotoicons.com online and return DisplayIcon objects."""
         results: List[DisplayIcon] = []
 
-
         if IconRetrieveSource.ONLINE_YOTOICONS in online_sources or IconRetrieveSource.ONLINE in online_sources:
-            online_results = await self._search_yotoicons_online(query, limit=limit)
+            online_results = await self._search_yotoicons_online(query)
             results.extend(online_results)
         
         # TODO: Sort results by relevance if needed
 
-        return results[:limit]
+        return results
 
-    async def _search_yotoicons_online(self, query: str, limit: int = 50) -> List[DisplayIcon]:
+    async def _search_yotoicons_online(self, query: str) -> List[DisplayIcon]:
         from yoto_up_server.models import DisplayIcon
 
         searcher = YotoIconsSearcher(self._yotoicons_search_cache_dir)
         try:
-            results = await searcher.search(query, limit=limit)
+            results = await searcher.search(query)
 
             display_icons = []
             for res in results:

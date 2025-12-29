@@ -94,19 +94,21 @@ class IconSearchService:
         query: Optional[str] = None,
         fuzzy: bool = True,
         sources: List[SearchSource] | None = None,
-        limit: int = 100,
-    ) -> List[DisplayIcon]:
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[List[DisplayIcon], int]:
         """
-        Search icons by query matching against title and tags.
+        Search icons by query matching against title and tags with pagination.
         
         Args:
             query: Search query (matches against both title and tags)
             fuzzy: Use fuzzy matching (True) or partial matching (False)
             sources: Which sources to search ("official", "yotoicons", or both)
-            limit: Maximum results
+            page: Page number (1-indexed)
+            per_page: Results per page
             
         Returns:
-            List of matching icons
+            Tuple of (list of matching icons for this page, total count)
         """
         if not sources:
             sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
@@ -118,36 +120,43 @@ class IconSearchService:
                 results.extend(self.official_manifest)
             if SearchSource.YOTOICONS in sources:
                 results.extend(self._yotoicons_cache.values())
-            return results[:limit]
-        
-        # Build list of icons to search
-        icons_to_search: List[DisplayIcon] = []
-        if SearchSource.OFFICIAL in sources:
-            icons_to_search.extend(self.official_manifest)
-        if SearchSource.YOTOICONS in sources:
-            icons_to_search.extend(self._yotoicons_cache.values())
-        
-        # Search query in title and tags
-        results: List[DisplayIcon] = []
-        for icon in icons_to_search:
-            # Check title
-            title = icon.title or ""
-            if self._matches_query(query, title, fuzzy):
-                results.append(icon)
-                continue
+        else:
+            # Build list of icons to search
+            icons_to_search: List[DisplayIcon] = []
+            if SearchSource.OFFICIAL in sources:
+                icons_to_search.extend(self.official_manifest)
+            if SearchSource.YOTOICONS in sources:
+                icons_to_search.extend(self._yotoicons_cache.values())
             
-            # Check tags
-            tags = icon.publicTags or []
-            if any(self._matches_query(query, tag, fuzzy) for tag in tags):
-                results.append(icon)
+            # Search query in title and tags
+            results: List[DisplayIcon] = []
+            for icon in icons_to_search:
+                # Check title
+                title = icon.title or ""
+                if self._matches_query(query, title, fuzzy):
+                    results.append(icon)
+                    continue
+                
+                # Check tags
+                tags = icon.publicTags or []
+                if any(self._matches_query(query, tag, fuzzy) for tag in tags):
+                    results.append(icon)
         
-        return results[:limit]
+        # Apply pagination
+        total = len(results)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_results = results[start_idx:end_idx]
+        
+        return paginated_results, total
 
     def get_all_icons(
         self,
         sources: List[SearchSource] | None = None,
-    ) -> List[DisplayIcon]:
-        """Get all icons from selected sources."""
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[List[DisplayIcon], int]:
+        """Get all icons from selected sources with pagination."""
         if not sources:
             sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
         
@@ -157,4 +166,10 @@ class IconSearchService:
         if SearchSource.YOTOICONS in sources:
             results.extend(self._yotoicons_cache.values())
         
-        return results
+        # Apply pagination
+        total = len(results)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        paginated_results = results[start_idx:end_idx]
+        
+        return paginated_results, total

@@ -32,34 +32,52 @@ async def get_icons_grid(
     ),
     query: Optional[str] = Query(None, description="Search query for titles"),
     fuzzy: bool = Query(True, description="Use fuzzy matching for titles"),
-    limit: int = Query(100, description="Max number of icons"),
+    page: int = Query(1, description="Page number (1-indexed)"),
+    per_page: int = Query(50, description="Icons per page"),
 ):
     """
-    Get a grid of icons for selection with advanced search.
+    Get a grid of icons for selection with advanced search and pagination.
 
     Search parameters:
     - query: Search titles with optional fuzzy matching
-    - tags: Filter by tags (comma-separated)
     - fuzzy: Enable fuzzy title matching
+    - page: Page number (1-indexed)
+    - per_page: Icons per page
     """
-    icons = await icon_service.get_icons(
+    icons, total = await icon_service.get_icons(
         api_client=api_dep,
         sources=source,
         query=query,
         fuzzy=fuzzy,
-        limit=limit,
+        page=page,
+        per_page=per_page,
     )
 
-    title = "My Icons" if source == "user" else "Yoto Icons"
-    if source == "yotoicons":
-        title = "YotoIcons.com Results"
-    elif source == "yotoicons_cache":
-        title = "Cached YotoIcons"
+    # Determine title based on sources
+    if len(source) == 1:
+        source_str = str(source[0].value if hasattr(source[0], 'value') else source[0])
+        if "user" in source_str:
+            title = "My Icons"
+        elif "yotoicons" in source_str:
+            title = "YotoIcons.com Results" if "online" in source_str else "Cached YotoIcons"
+        else:
+            title = "Yoto Icons"
+    else:
+        title = "Yoto Icons"
         
     if query:
         title = f"Search Results for '{query}'"
 
-    return IconGridPartial(icons=icons, title=title)
+    return render_partial(IconGridPartial(
+        icons=icons,
+        title=title,
+        total=total,
+        page=page,
+        per_page=per_page,
+        source=source,
+        query=query,
+        fuzzy=fuzzy,
+    ))
 
 
 @router.get("/{media_id}", response_class=HTMLResponse)
