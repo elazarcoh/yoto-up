@@ -2,17 +2,15 @@
 Icon Search Service.
 
 Advanced search across official and yotoicons sources with support for:
-- Partial and fuzzy matching on titles
-- Tag-based filtering
-- Combined searches
+- Partial and fuzzy matching on titles and tags
+- Combined query searching
 """
 
 from __future__ import annotations
 
 from enum import Enum
-import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from difflib import SequenceMatcher
 from loguru import logger
@@ -86,18 +84,23 @@ class IconSearchService:
         """Partial string matching (substring)."""
         return query.lower() in text.lower()
 
-    def search_by_title(
+    def _matches_query(self, query: str, text: str, fuzzy: bool = True) -> bool:
+        """Check if text matches the query using fuzzy or partial matching."""
+        match_fn = self._fuzzy_match if fuzzy else self._partial_match
+        return match_fn(query, text)
+
+    def search(
         self,
-        query: str,
+        query: Optional[str] = None,
         fuzzy: bool = True,
         sources: List[SearchSource] | None = None,
         limit: int = 100,
     ) -> List[DisplayIcon]:
         """
-        Search icons by title.
+        Search icons by query matching against title and tags.
         
         Args:
-            query: Search query
+            query: Search query (matches against both title and tags)
             fuzzy: Use fuzzy matching (True) or partial matching (False)
             sources: Which sources to search ("official", "yotoicons", or both)
             limit: Maximum results
@@ -107,154 +110,36 @@ class IconSearchService:
         """
         if not sources:
             sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
-            
-        results: List[DisplayIcon] = []
-        icons_to_search: List[DisplayIcon] = []
         
-        if SearchSource.OFFICIAL in sources:
-            icons_to_search.extend(self.official_manifest)
-        if SearchSource.YOTOICONS in sources:
-            icons_to_search.extend(self._yotoicons_cache.values())
-        
-        # Match function
-        match_fn = self._fuzzy_match if fuzzy else self._partial_match
-        
-        for icon in icons_to_search:
-            title = icon.title or ""
-            if match_fn(query, title):
-                results.append(icon)
-        
-        return results[:limit]
-
-    def search_by_tags(
-        self,
-        tags: List[str],
-        match_all: bool = False,
-        sources: List[SearchSource] | None = None,
-        limit: int = 100,
-    ) -> List[DisplayIcon]:
-        """
-        Search icons by tags.
-        
-        Args:
-            tags: List of tags to search for
-            match_all: If True, icon must have all tags. If False, icon must have any tag.
-            sources: Which sources to search
-            limit: Maximum results
-            
-        Returns:
-            List of matching icons
-        """
-        if not sources:
-            sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
-            
-        if not tags:
-            return []
-        
-        results: List[DisplayIcon] = []
-        icons_to_search: List[DisplayIcon] = []
-        
-        if SearchSource.OFFICIAL in sources:
-            icons_to_search.extend(self.official_manifest)
-        if SearchSource.YOTOICONS in sources:
-            icons_to_search.extend(self._yotoicons_cache.values())
-        
-        tags_lower = [t.lower() for t in tags]
-        
-        for icon in icons_to_search:
-            icon_tags = [t.lower() for t in (icon.publicTags or [])]
-            
-            if match_all:
-                # All search tags must be present
-                if all(tag in icon_tags for tag in tags_lower):
-                    results.append(icon)
-            else:
-                # Any search tag can be present
-                if any(tag in icon_tags for tag in tags_lower):
-                    results.append(icon)
-        
-        return results[:limit]
-
-    def search_combined(
-        self,
-        query: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        fuzzy: bool = True,
-        sources: List[SearchSource] | None = None,  
-        limit: int = 100,
-    ) -> List[DisplayIcon]:
-        """
-        Combined search on title and/or tags.
-        
-        Args:
-            query: Search query for titles
-            tags: Tags to filter by
-            fuzzy: Use fuzzy matching for titles
-            sources: Which sources to search
-            limit: Maximum results
-            
-        Returns:
-            List of matching icons (intersection of criteria if both specified)
-        """
-        if not sources:
-            sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
-        
-        results: List[DisplayIcon] = []
-        
-        # Start with title search if query provided
-        if query:
-            results = self.search_by_title(query, fuzzy=fuzzy, sources=sources, limit=limit * 2)
-        else:
-            # Get all icons from selected sources
+        # If no query provided, return all icons
+        if not query:
+            results: List[DisplayIcon] = []
             if SearchSource.OFFICIAL in sources:
                 results.extend(self.official_manifest)
             if SearchSource.YOTOICONS in sources:
                 results.extend(self._yotoicons_cache.values())
+            return results[:limit]
         
-        # Filter by tags if provided
-        if tags:
-            tag_results = set(
-                icon.mediaId 
-                for icon in self.search_by_tags(tags, match_all=False, sources=sources)
-            )
-            results = [icon for icon in results if icon.mediaId in tag_results]
-        
-        return results[:limit]
-
-    def search(
-        self,
-        query: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        fuzzy: bool = True,
-        sources: List[SearchSource] | None = None,
-        limit: int = 100,
-    ) -> List[DisplayIcon]:
-        """
-        Unified search interface.
-        
-        Default behavior: combined search on title and tags.
-        If only query: search by title
-        If only tags: search by tags
-        If both: combined search (intersection)
-        """
-        if query or tags:
-            return self.search_combined(
-                query=query,
-                tags=tags,
-                fuzzy=fuzzy,
-                sources=sources,
-                limit=limit,
-            )
-        
-        # Return all icons if no search criteria
-        if not sources:
-            sources = [SearchSource.OFFICIAL, SearchSource.YOTOICONS]
-        
-        results: List[DisplayIcon] = []
+        # Build list of icons to search
+        icons_to_search: List[DisplayIcon] = []
         if SearchSource.OFFICIAL in sources:
-            results.extend(self.official_manifest)
+            icons_to_search.extend(self.official_manifest)
         if SearchSource.YOTOICONS in sources:
-            results.extend(self._yotoicons_cache.values())
+            icons_to_search.extend(self._yotoicons_cache.values())
+        
+        # Search query in title and tags
+        results: List[DisplayIcon] = []
+        for icon in icons_to_search:
+            # Check title
+            title = icon.title or ""
+            if self._matches_query(query, title, fuzzy):
+                results.append(icon)
+                continue
+            
+            # Check tags
+            tags = icon.publicTags or []
+            if any(self._matches_query(query, tag, fuzzy) for tag in tags):
+                results.append(icon)
         
         return results[:limit]
 

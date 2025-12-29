@@ -31,7 +31,6 @@ async def get_icons_grid(
         ...,
     ),
     query: Optional[str] = Query(None, description="Search query for titles"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags to filter by"),
     fuzzy: bool = Query(True, description="Use fuzzy matching for titles"),
     limit: int = Query(100, description="Max number of icons"),
 ):
@@ -43,14 +42,10 @@ async def get_icons_grid(
     - tags: Filter by tags (comma-separated)
     - fuzzy: Enable fuzzy title matching
     """
-    # Parse tags if provided
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
-    
     icons = await icon_service.get_icons(
         api_client=api_dep,
         sources=source,
         query=query,
-        tags=tag_list,
         fuzzy=fuzzy,
         limit=limit,
     )

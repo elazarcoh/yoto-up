@@ -618,7 +618,6 @@ class IconService:
         api_client: YotoApiClient,
         sources: List[IconRetrieveSource],
         query: Optional[str] = None,
-        tags: Optional[List[str]] = None,
         fuzzy: bool = True,
         limit: int = 100,
     ) -> List[DisplayIcon]:
@@ -671,7 +670,6 @@ class IconService:
         # Perform search
         icons = self._search_service.search(
             query=query,
-            tags=tags,
             fuzzy=fuzzy,
             sources=search_sources,
             limit=limit,
