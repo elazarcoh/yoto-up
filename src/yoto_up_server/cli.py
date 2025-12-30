@@ -1,18 +1,15 @@
 """
-CLI entry point for the Yoto Up Server.
+CLI entry point for the Yoto Server.
 """
 
 import webbrowser
 import time
 import threading
-from typing import Optional
-import sys
-import logging
 
 import typer
 import uvicorn
 from loguru import logger
-from yoto_up_server.logging_config import configure_logging, EndpointsFilter
+from yoto_up_server.logging_config import configure_logging
 
 
 app = typer.Typer(help="Yoto Up Server CLI")

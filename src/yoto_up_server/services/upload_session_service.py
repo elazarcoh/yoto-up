@@ -42,6 +42,7 @@ class UploadSessionService:
         self,
         playlist_id: str,
         user_id: str,
+        user_session_id: Optional[str],
         request: UploadSessionInitRequest,
     ) -> UploadSession:
         """
@@ -50,6 +51,7 @@ class UploadSessionService:
         Args:
             playlist_id: ID of the playlist to upload to
             user_id: ID of the authenticated user
+            user_session_id: The user's auth session ID for API calls (optional)
             request: Upload configuration request
 
         Returns:
@@ -61,6 +63,7 @@ class UploadSessionService:
             session_id=session_id,
             playlist_id=playlist_id,
             user_id=user_id,
+            user_session_id=user_session_id,
             upload_mode=request.upload_mode,
             normalize=request.normalize,
             target_lufs=request.target_lufs,

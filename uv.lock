@@ -2465,7 +2465,6 @@ name = "yoto-up"
 version = "0.1.17"
 source = { editable = "." }
 dependencies = [
-    { name = "aiomqtt" },
     { name = "beautifulsoup4" },
     { name = "ffmpeg-binaries" },
     { name = "ffmpeg-normalize" },
@@ -2498,6 +2497,7 @@ gui = [
     { name = "pyloudnorm" },
 ]
 server = [
+    { name = "aiomqtt" },
     { name = "cryptography" },
     { name = "dependency-injector" },
     { name = "fastapi" },
@@ -2523,7 +2523,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiomqtt", specifier = ">=2.0.0" },
+    { name = "aiomqtt", marker = "extra == 'server'", specifier = ">=2.0.0" },
     { name = "beautifulsoup4", specifier = ">=4.9.0" },
     { name = "cryptography", marker = "extra == 'server'", specifier = ">=46.0.3" },
     { name = "dependency-injector", marker = "extra == 'server'", specifier = ">=4.40.0" },

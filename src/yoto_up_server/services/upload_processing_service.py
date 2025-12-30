@@ -20,12 +20,12 @@ from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
 from loguru import logger
 
 from yoto_up.models import Chapter, Track, CardContent
+from yoto_up.yoto_api_client import TranscodedAudioResponse, YotoApiClient
 from yoto_up_server.models import (
     UploadFileStatus,
     UploadMode,
     UploadSession,
 )
-from yoto_up.yoto_api_client import TranscodedAudioResponse
 
 if TYPE_CHECKING:
     from yoto_up_server.services.audio_processor import AudioProcessorService
@@ -352,24 +352,31 @@ class UploadProcessingService:
     def _upload_file_to_yoto(self, file_path: Path, session_id: str) -> TranscodedAudioResponse:
         """
         Upload a file to Yoto and return the track URL and duration.
-        Uses the session-aware API service.
+        Creates a fresh API client in the thread pool worker to avoid event loop conflicts.
 
         Args:
             file_path: Path to the audio file
-            session_id: Current session ID for API client context
+            session_id: Current upload session ID
 
         Returns:
             TranscodedAudioResponse with upload details
         """
 
-        async def _do_upload() -> TranscodedAudioResponse:
-            # Get the API client for this session
-            session = self._session_aware_api_service.session_service.get_session(session_id)
-            if not session:
-                raise ValueError(f"Session {session_id} not found")
-
-            api = await self._session_aware_api_service.get_or_create_api_client(
-                session_id, session.access_token
+        async def _do_upload(access_token: str) -> TranscodedAudioResponse:
+            # Create a fresh API client in this thread's event loop
+            # This avoids the issue of the client being bound to the main Uvicorn event loop
+            from yoto_up.yoto_app import config as yoto_config
+            from yoto_up.yoto_api_client import YotoApiConfig, TokenData
+            
+            config = YotoApiConfig(client_id=yoto_config.CLIENT_ID)
+            api = YotoApiClient(config=config)
+            
+            # Set the access token for this client
+            import time
+            api.auth._token_data = TokenData(
+                access_token=access_token,
+                refresh_token=None,
+                expires_at=time.time() + 600,
             )
 
             # 1. Calculate SHA256
@@ -391,13 +398,23 @@ class UploadProcessingService:
 
             return transcoded
 
-        # Run async code in a new event loop since we're in a thread pool worker
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(_do_upload())
-        finally:
-            loop.close()
+        # Get the upload session to get the access token
+        upload_session = self._upload_session_service.get_session(session_id)
+        if not upload_session:
+            raise ValueError(f"Upload session {session_id} not found")
+
+        if not upload_session.user_session_id:
+            raise ValueError(f"Upload session {session_id} has no user session ID")
+
+        # Get the access token from the session service
+        session_data = self._session_aware_api_service.session_service.get_session(
+            upload_session.user_session_id
+        )
+        if not session_data:
+            raise ValueError(f"User session {upload_session.user_session_id} not found")
+
+        # Run async code in a new event loop with a fresh API client
+        return asyncio.run(_do_upload(session_data.access_token))
 
     def _update_playlist(
         self, playlist_id: str, new_tracks: List[Track], upload_mode: UploadMode, session_id: str
@@ -408,17 +425,24 @@ class UploadProcessingService:
             playlist_id: ID of the playlist (card) to update
             new_tracks: List of Track objects to add
             upload_mode: Mode for upload ('chapters' or 'tracks')
-            session_id: Current session ID for API client context
+            session_id: Current upload session ID
         """
 
-        async def _do_update() -> None:
-            # Get the API client for this session
-            session = self._session_aware_api_service.session_service.get_session(session_id)
-            if not session:
-                raise ValueError(f"Session {session_id} not found")
-
-            api = await self._session_aware_api_service.get_or_create_api_client(
-                session_id, session.access_token
+        async def _do_update(access_token: str) -> None:
+            # Create a fresh API client in this thread's event loop
+            # This avoids the issue of the client being bound to the main Uvicorn event loop
+            from yoto_up.yoto_app import config as yoto_config
+            from yoto_up.yoto_api_client import YotoApiConfig, TokenData
+            
+            config = YotoApiConfig(client_id=yoto_config.CLIENT_ID)
+            api = YotoApiClient(config=config)
+            
+            # Set the access token for this client
+            import time
+            api.auth._token_data = TokenData(
+                access_token=access_token,
+                refresh_token=None,
+                expires_at=time.time() + 600,
             )
 
             card = await api.get_card(playlist_id)
@@ -460,13 +484,23 @@ class UploadProcessingService:
 
             await api.update_card(card)
 
-        # Run async code in a new event loop since we're in a thread pool worker
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_do_update())
-        finally:
-            loop.close()
+        # Get the upload session to get the access token
+        upload_session = self._upload_session_service.get_session(session_id)
+        if not upload_session:
+            raise ValueError(f"Upload session {session_id} not found")
+
+        if not upload_session.user_session_id:
+            raise ValueError(f"Upload session {session_id} has no user session ID")
+
+        # Get the access token from the session service
+        session_data = self._session_aware_api_service.session_service.get_session(
+            upload_session.user_session_id
+        )
+        if not session_data:
+            raise ValueError(f"User session {upload_session.user_session_id} not found")
+
+        # Run async code in a new event loop with a fresh API client
+        asyncio.run(_do_update(session_data.access_token))
 
     def _mark_session_error(self, session_id: str, error_message: str) -> None:
         """

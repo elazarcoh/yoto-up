@@ -62,6 +62,7 @@ class UploadSession(BaseModel):
     session_id: str
     playlist_id: str
     user_id: str
+    user_session_id: Optional[str] = None  # The user's auth session ID for API calls
     created_at: datetime = Field(default_factory=datetime.utcnow)
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -86,25 +87,16 @@ class UploadSession(BaseModel):
         json_encoders = {datetime: lambda v: v.isoformat()}
 
 
-class FileUploadResponse(BaseModel):
-    """Response after file upload."""
-
-    job_id: str
-    filename: str
-    status: UploadStatus
-    message: Optional[str] = None
-
-
 class UploadSessionInitRequest(BaseModel):
     """Request to initialize an upload session."""
 
-    upload_mode: str = "chapters"
+    upload_mode: UploadMode = "chapters"
     normalize: bool = False
-    target_lufs: Optional[float] = -23.0
+    target_lufs: float = -23.0
     normalize_batch: bool = False
     analyze_intro_outro: bool = False
-    segment_seconds: Optional[float] = 10.0
-    similarity_threshold: Optional[float] = 0.75
+    segment_seconds: float = 10.0
+    similarity_threshold: float = 0.75
     show_waveform: bool = False
 
 

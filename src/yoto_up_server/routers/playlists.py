@@ -645,11 +645,13 @@ async def create_upload_session(
 
         # Get user ID from session or use default
         user_id = request.cookies.get("user_id", "unknown")
+        user_session_id = getattr(request.state, "session_id", None)
 
         # Create session
         session = upload_session_service.create_session(
             playlist_id=playlist_id,
             user_id=user_id,
+            user_session_id=user_session_id,
             request=upload_request,
         )
 
