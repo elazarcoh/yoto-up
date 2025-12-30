@@ -15,9 +15,8 @@ from concurrent.futures import (
     Future as ConcurrentFuture,
 )
 from pathlib import Path
-from typing import Literal, Optional, Dict, List, Tuple, TYPE_CHECKING
+from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
 
-import concurrent
 from loguru import logger
 
 from yoto_up.models import Chapter, Track, CardContent
@@ -25,18 +24,12 @@ from yoto_up_server.models import (
     UploadFileStatus,
     UploadMode,
     UploadSession,
-    UploadStatus,
 )
-from yoto_up.yoto_api_client import (
-    TranscodedAudioResponse,
-    YotoApiClient,
-    YotoApiConfig,
-)
-from yoto_up.yoto_app import config as yoto_config
-from yoto_up import paths
+from yoto_up.yoto_api_client import TranscodedAudioResponse
 
 if TYPE_CHECKING:
     from yoto_up_server.services.audio_processor import AudioProcessorService
+    from yoto_up_server.services.session_aware_api_service import SessionAwareApiService
     from yoto_up_server.services.upload_session_service import UploadSessionService
 
 
@@ -51,9 +44,11 @@ class UploadProcessingService:
         self,
         audio_processor: "AudioProcessorService",
         upload_session_service: "UploadSessionService",
+        session_aware_api_service: "SessionAwareApiService",
     ) -> None:
         self._audio_processor = audio_processor
         self._upload_session_service = upload_session_service
+        self._session_aware_api_service = session_aware_api_service
 
         self._queue: queue.Queue[Tuple[str, str]] = queue.Queue()
         self._stop_event = threading.Event()
@@ -211,7 +206,7 @@ class UploadProcessingService:
 
         if ordered_tracks:
             try:
-                self._update_playlist(playlist_id, ordered_tracks, session.upload_mode)
+                self._update_playlist(playlist_id, ordered_tracks, session.upload_mode, session_id)
                 logger.info(
                     f"Successfully updated playlist {playlist_id} with {len(ordered_tracks)} tracks"
                 )
@@ -270,6 +265,8 @@ class UploadProcessingService:
                 logger.info(f"Session {session_id} stopped, skipping file {file_status.filename}")
                 return None
 
+            # temp_path is guaranteed to be set by caller check, but assert for type narrowing
+            assert file_status.temp_path is not None
             input_path = Path(file_status.temp_path)
 
             # 1. Normalization (Parallel mode)
@@ -315,7 +312,7 @@ class UploadProcessingService:
                 session_id, file_status.file_id, "uploading_to_api"
             )
 
-            transcoded = self._upload_file_to_yoto(input_path)
+            transcoded = self._upload_file_to_yoto(input_path, session_id)
 
             # 4. Create Track
             self._upload_session_service.mark_file_processing(
@@ -352,90 +349,124 @@ class UploadProcessingService:
             logger.error(f"Pipeline failed for {file_status.filename}: {e}")
             raise
 
-    def _upload_file_to_yoto(self, file_path: Path) -> TranscodedAudioResponse:
+    def _upload_file_to_yoto(self, file_path: Path, session_id: str) -> TranscodedAudioResponse:
         """
         Upload a file to Yoto and return the track URL and duration.
-        Uses a fresh API client instance to avoid event loop issues in threads.
+        Uses the session-aware API service.
+
+        Args:
+            file_path: Path to the audio file
+            session_id: Current session ID for API client context
+
+        Returns:
+            TranscodedAudioResponse with upload details
         """
 
-        async def _do_upload():
-            config = YotoApiConfig(client_id=yoto_config.CLIENT_ID)
-            async with YotoApiClient(
-                config=config, token_file=paths.TOKENS_FILE
-            ) as api:
-                # 1. Calculate SHA256
-                sha256, file_bytes = api.calculate_sha256(file_path)
+        async def _do_upload() -> TranscodedAudioResponse:
+            # Get the API client for this session
+            session = self._session_aware_api_service.session_service.get_session(session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
 
-                # 2. Get Upload URL
-                resp = await api.get_audio_upload_url(sha256, filename=file_path.name)
-                upload = resp.upload
+            api = await self._session_aware_api_service.get_or_create_api_client(
+                session_id, session.access_token
+            )
 
-                # 3. Upload if needed
-                if upload.upload_url:
-                    await api.upload_audio_file(upload.upload_url, file_bytes)
+            # 1. Calculate SHA256
+            sha256, file_bytes = api.calculate_sha256(file_path)
 
-                # 4. Poll for transcoding
-                # We disable API-side loudnorm because we handle it locally if requested
-                transcoded = await api.poll_for_transcoding(
-                    upload.upload_id, loudnorm=False
-                )
+            # 2. Get Upload URL
+            resp = await api.get_audio_upload_url(sha256, filename=file_path.name)
+            upload = resp.upload
 
-                return transcoded
+            # 3. Upload if needed
+            if upload.upload_url:
+                await api.upload_audio_file(upload.upload_url, file_bytes)
 
-        return asyncio.run(_do_upload())
+            # 4. Poll for transcoding
+            # We disable API-side loudnorm because we handle it locally if requested
+            transcoded = await api.poll_for_transcoding(
+                upload.upload_id, loudnorm=False
+            )
+
+            return transcoded
+
+        # Run async code in a new event loop since we're in a thread pool worker
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(_do_upload())
+        finally:
+            loop.close()
 
     def _update_playlist(
-        self, playlist_id: str, new_tracks: List[Track], upload_mode: UploadMode
-    ):
-        """Update playlist with new tracks/chapters."""
-        config = YotoApiConfig(client_id=yoto_config.CLIENT_ID)
-        api = YotoApiClient(config=config, token_file=paths.TOKENS_FILE)
+        self, playlist_id: str, new_tracks: List[Track], upload_mode: UploadMode, session_id: str
+    ) -> None:
+        """Update playlist with new tracks/chapters.
 
-        async def _do_update():
-            await api.initialize()
-            try:
-                card = await api.get_card(playlist_id)
-                if not card.content:
-                    card.content = CardContent(chapters=[])
+        Args:
+            playlist_id: ID of the playlist (card) to update
+            new_tracks: List of Track objects to add
+            upload_mode: Mode for upload ('chapters' or 'tracks')
+            session_id: Current session ID for API client context
+        """
 
-                if card.content.chapters is None:
-                    card.content.chapters = []
+        async def _do_update() -> None:
+            # Get the API client for this session
+            session = self._session_aware_api_service.session_service.get_session(session_id)
+            if not session:
+                raise ValueError(f"Session {session_id} not found")
 
-                if upload_mode == "chapters":
-                    # Create a chapter for each track
-                    chapter_key = 0
-                    existing_keys = {chapter.key for chapter in card.content.chapters}
-                    while str(chapter_key) in existing_keys:
-                        chapter_key += 1
-                    for key, track in enumerate(new_tracks):
-                        track.key = str(key)
-                        chapter = Chapter(
-                            title=track.title, tracks=[track], key=str(chapter_key)
-                        )
-                        card.content.chapters.append(chapter)
+            api = await self._session_aware_api_service.get_or_create_api_client(
+                session_id, session.access_token
+            )
 
-                elif upload_mode == "tracks":
-                    # Add all tracks to a new chapter
-                    # Or append to the last chapter if it exists?
-                    # Let's create a new chapter for this batch upload
-                    key = 0
-                    current_keys = {chapter.key for chapter in card.content.chapters}
-                    while str(key) in current_keys:
-                        key += 1
-                    for idx, track in enumerate(new_tracks):
-                        track.key = str(idx)
+            card = await api.get_card(playlist_id)
+            if not card.content:
+                card.content = CardContent(chapters=[])
+
+            if card.content.chapters is None:
+                card.content.chapters = []
+
+            if upload_mode == "chapters":
+                # Create a chapter for each track
+                chapter_key = 0
+                existing_keys = {chapter.key for chapter in card.content.chapters}
+                while str(chapter_key) in existing_keys:
+                    chapter_key += 1
+                for key, track in enumerate(new_tracks):
+                    track.key = str(key)
                     chapter = Chapter(
-                        title="New Uploads",  # TODO: Maybe use date or something?
-                        tracks=new_tracks,
-                        key=str(key),
+                        title=track.title, tracks=[track], key=str(chapter_key)
                     )
                     card.content.chapters.append(chapter)
 
-                await api.update_card(card)
-            finally:
-                await api.close()
+            elif upload_mode == "tracks":
+                # Add all tracks to a new chapter
+                # Or append to the last chapter if it exists?
+                # Let's create a new chapter for this batch upload
+                key = 0
+                current_keys = {chapter.key for chapter in card.content.chapters}
+                while str(key) in current_keys:
+                    key += 1
+                for idx, track in enumerate(new_tracks):
+                    track.key = str(idx)
+                chapter = Chapter(
+                    title="New Uploads",  # TODO: Maybe use date or something?
+                    tracks=new_tracks,
+                    key=str(key),
+                )
+                card.content.chapters.append(chapter)
 
-        asyncio.run(_do_update())
+            await api.update_card(card)
+
+        # Run async code in a new event loop since we're in a thread pool worker
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_do_update())
+        finally:
+            loop.close()
 
     def _mark_session_error(self, session_id: str, error_message: str) -> None:
         """

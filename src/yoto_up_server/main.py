@@ -18,6 +18,7 @@ from pydom import render
 from pydom.component import Component
 from pydom.element import Element
 
+from yoto_up.yoto_api_client import YotoAuthError
 from yoto_up_server.container import Container
 from yoto_up_server.dependencies import AuthenticationError
 from yoto_up_server.logging_config import configure_logging
@@ -92,7 +93,6 @@ app.add_middleware(
 )
 
 
-@app.exception_handler(AuthenticationError)
 async def authentication_error_handler(
     request: Request, exc: AuthenticationError
 ) -> HTMLResponse:
@@ -132,6 +132,48 @@ async def authentication_error_handler(
         status_code=401,
     )
 
+
+async def client_auth_error(request: Request, exc: YotoAuthError):
+    """
+    Handle authentication errors by showing a session-expired modal
+    and redirecting to the login page.
+    """
+
+    html_response = d.Div(
+        classes="fixed inset-0 flex items-center justify-center bg-black/50 z-[9999]"
+    )(
+        d.Div(
+            classes="bg-white rounded-lg shadow-lg p-6 max-w-md w-full text-center",
+        )(
+            d.H2(classes="text-xl font-bold text-gray-900 m-0 mb-4")("Session Expired"),
+            d.P(classes="text-gray-600 m-0 mb-6 leading-relaxed")(
+                "Your authentication session has expired. Please log in again."
+            ),
+            d.A(
+                href="/auth",
+                classes="inline-block px-6 py-2.5 bg-indigo-600 text-white rounded-md font-medium cursor-pointer no-underline transition-colors duration-200 hover:bg-indigo-700",
+            )("Go to Login"),
+        ),
+        d.Script()("""//js
+                // Auto-redirect to login page after 3 seconds
+                setTimeout(() => {
+                    window.location.href = '/auth';
+                }, 3000);
+            """),
+    )
+    return HTMLResponse(
+        content=render_page(
+            title="Session Expired",
+            content=html_response,
+            request=request,
+        ),
+        status_code=401,
+    )
+
+
+# Register exception handlers
+app.exception_handler(AuthenticationError)(authentication_error_handler)
+app.exception_handler(YotoAuthError)(client_auth_error)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

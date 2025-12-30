@@ -37,10 +37,12 @@ def get_encryption_key() -> bytes:
 def init_upload_processing_service(
     audio_processor: AudioProcessorService,
     upload_session_service: UploadSessionService,
+    session_aware_api_service: SessionAwareApiService,
 ):
     service = UploadProcessingService(
         audio_processor=audio_processor,
         upload_session_service=upload_session_service,
+        session_aware_api_service=session_aware_api_service,
     )
     service.start()
     yield service
@@ -105,6 +107,7 @@ class Container(containers.DeclarativeContainer):
         init_upload_processing_service,
         audio_processor=audio_processor,
         upload_session_service=upload_session_service,
+        session_aware_api_service=session_aware_api_service,
     )
 
     mqtt_service = providers.Singleton(

@@ -116,6 +116,10 @@ async def require_session_auth(
     session_id = get_session_id_from_request(request)
     cookie_payload = get_cookie_payload_from_request(request)
 
+    if session_id is None:
+        logger.debug("No session ID found in request")
+        raise AuthenticationError("Not authenticated")
+
     # Case 1: No session cookie at all
     if not cookie_payload:
         logger.debug("No session cookie found")
@@ -123,6 +127,16 @@ async def require_session_auth(
 
     # Case 2: Session exists in memory
     if session:
+        if not session_id:
+            logger.error("Session exists in memory but no session ID in cookie")
+            raise AuthenticationError("Session ID missing")
+
+        if session.session_id != session_id:
+            logger.error(
+                f"Session ID mismatch: cookie {session_id[:8]}... vs memory {session.session_id[:8]}..."
+            )
+            raise AuthenticationError("Session ID mismatch")
+
         # Check if access token expired
         if session.is_access_token_expired():
             logger.info(
