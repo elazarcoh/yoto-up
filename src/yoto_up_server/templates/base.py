@@ -8,6 +8,8 @@ from typing import Optional, Union
 
 from fastapi import Request
 from pydom import Component, render
+from pydom.context import get_context
+from pydom.context.standard import transformers
 from pydom.types import Renderable
 from pydom import html as d
 
@@ -17,7 +19,18 @@ from yoto_up_server.utils.setup_htmx import HTMX, HtmxExtensions
 
 # Initialize HTMX with extensions
 htmx = HTMX()
-
+get_context().add_prop_transformer(
+    HtmxExtensions.class_tools.transformer(),
+    before=[
+        transformers.DashTransformer,
+    ],
+)
+get_context().add_prop_transformer(
+    htmx.transformer(),
+    before=[
+        transformers.DashTransformer,
+    ],
+)
 
 class BaseLayout(Component):
     """Base HTML layout with HTMX and navigation."""
@@ -44,6 +57,7 @@ class BaseLayout(Component):
                 # HTMX
                 htmx.script(),
                 HtmxExtensions.sse.script(),
+                HtmxExtensions.class_tools.script(),
                 # Alpine.js for simple interactivity
                 d.Script(
                     src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True

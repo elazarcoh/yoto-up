@@ -2,15 +2,17 @@
 Devices router.
 """
 
-import json
+from datetime import time as dt_time
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from loguru import logger
+from pydantic import BaseModel
 
-from yoto_up.models import DeviceConfig
+from yoto_up.yoto_api_client import DAYS, ConfigAlarms, DeviceConfig, DeviceConfigUpdate
 from yoto_up_server.dependencies import MqttServiceDep, YotoClientDep
+from yoto_up_server.templates.alarms import AlarmCard
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.device_detail import DeviceDetailPage
 from yoto_up_server.templates.devices import DevicesPage
@@ -166,32 +168,215 @@ async def set_volume(
     return ""
 
 
+def _update_from_current_config(
+    current_config: DeviceConfig,
+) -> DeviceConfigUpdate:
+    return DeviceConfigUpdate(
+        name=current_config.device.name,
+        config=DeviceConfigUpdate.UpdateConfig(
+            locale=current_config.device.config.locale,
+            bluetooth_enabled=current_config.device.config.bluetooth_enabled,
+            repeat_all=current_config.device.config.repeat_all,
+            show_diagnostics=current_config.device.config.show_diagnostics,
+            bt_headphones_enabled=current_config.device.config.bt_headphones_enabled,
+            pause_volume_down=current_config.device.config.pause_volume_down,
+            pause_power_button=current_config.device.config.pause_power_button,
+            display_dim_timeout=current_config.device.config.display_dim_timeout,
+            shutdown_timeout=current_config.device.config.shutdown_timeout,
+            headphones_volume_limited=current_config.device.config.headphones_volume_limited,
+            day_time=current_config.device.config.day_time,
+            max_volume_limit=current_config.device.config.max_volume_limit,
+            ambient_colour=current_config.device.config.ambient_colour,
+            day_display_brightness=current_config.device.config.day_display_brightness,
+            day_yoto_daily=current_config.device.config.day_yoto_daily,
+            day_yoto_radio=current_config.device.config.day_yoto_radio,
+            day_sounds_off=current_config.device.config.day_sounds_off,
+            night_time=current_config.device.config.night_time,
+            night_max_volume_limit=current_config.device.config.night_max_volume_limit,
+            night_ambient_colour=current_config.device.config.night_ambient_colour,
+            night_display_brightness=current_config.device.config.night_display_brightness,
+            night_yoto_daily=current_config.device.config.night_yoto_daily,
+            night_yoto_radio=current_config.device.config.night_yoto_radio,
+            night_sounds_off=current_config.device.config.night_sounds_off,
+            hour_format=current_config.device.config.hour_format,
+            display_dim_brightness=current_config.device.config.display_dim_brightness,
+            system_volume=current_config.device.config.system_volume,
+            volume_level=current_config.device.config.volume_level,
+            clock_face=current_config.device.config.clock_face,
+            log_level=current_config.device.config.log_level,
+            alarms=[alarm.encode() for alarm in current_config.device.config.alarms],
+        ),
+    )
+
+
 @router.post("/{device_id}/config", response_class=HTMLResponse)
 async def update_config(
     device_id: str,
     yoto_client: YotoClientDep,
-    dayDisplayBrightness: Optional[int] = Form(None),
-    nightDisplayBrightness: Optional[int] = Form(None),
-    maxVolumeLimit: Optional[int] = Form(None),
+    request: Request,
 ) -> str:
     """Update device config via REST API."""
+    # Get form data
+    form_data = await request.form()
+
     # Fetch current config first
+    current = await yoto_client.get_device_config(device_id)
+
+    # Merge updates from form
+    current_config = current.device.config
+    new_config = current_config.model_copy(
+        update={
+            k: form_data[k]
+            for k in form_data.keys()
+            if k in current_config.model_fields_set
+        }
+    )
+    current.device.config = new_config
+    update = _update_from_current_config(current)
+
+    # Create new config
+    await yoto_client.update_device_config(device_id, update)
+
+    return ""
+
+
+# ============================================================================
+# Alarm Management
+# ============================================================================
+
+
+@router.post("/{device_id}/alarms", response_class=HTMLResponse)
+async def create_alarm(
+    device_id: str,
+    yoto_client: YotoClientDep,
+) -> str:
+    """Create a new alarm."""
+
+    # Fetch current config
     current_config = await yoto_client.get_device_config(device_id)
     devices = await yoto_client.get_devices()
     device = next((d for d in devices if d.deviceId == device_id), None)
     name = device.name if device else "Yoto Player"
 
-    # Merge updates
-    config_dict = current_config.model_dump(exclude_none=True)
-    if dayDisplayBrightness is not None:
-        config_dict["dayDisplayBrightness"] = dayDisplayBrightness
-    if nightDisplayBrightness is not None:
-        config_dict["nightDisplayBrightness"] = nightDisplayBrightness
-    if maxVolumeLimit is not None:
-        config_dict["maxVolumeLimit"] = maxVolumeLimit
+    # Create new alarm
+    new_alarm = ConfigAlarms(
+        weekdays={
+            day: False
+            for day in [
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ]
+        },
+        time=dt_time(9, 0),
+        tone_id=None,
+        volume_level="3",
+        is_enabled=True,
+    )
 
+    # Add to alarms list
+    config_dict = current_config.device.config.model_dump(
+        by_alias=True, exclude_none=True
+    )
+    alarms = config_dict.get("alarms", [])
+    alarm_index = len(alarms)
+
+    # Update config
+    config_dict["alarms"] = alarms + [new_alarm.model_dump(by_alias=True)]
     new_config = DeviceConfig(**config_dict)
     await yoto_client.update_device_config(device_id, name, new_config)
+
+    return render_partial(
+        AlarmCard(alarm=new_alarm, alarm_index=alarm_index, device_id=device_id)
+    )
+
+
+@router.delete("/{device_id}/alarms/{alarm_index}", response_class=HTMLResponse)
+async def delete_alarm(
+    device_id: str,
+    alarm_index: int,
+    yoto_client: YotoClientDep,
+) -> str:
+    """Delete an alarm."""
+    # Fetch current config
+    current_config = await yoto_client.get_device_config(device_id)
+
+    # Remove alarm
+    alarms = current_config.device.config.alarms
+
+    if 0 <= alarm_index < len(alarms):
+        alarms.pop(alarm_index)
+        current_config.device.config.alarms = alarms
+        update = _update_from_current_config(current_config)
+        await yoto_client.update_device_config(device_id, update)
+
+    return ""
+
+
+class UpdateForm(BaseModel):
+    is_enabled: bool | None = None
+    time: dt_time | None = None
+    tone_id: Optional[str] = None
+    volume_level: str | None = None
+    # weekdays
+    monday: bool | None = None
+    tuesday: bool | None = None
+    wednesday: bool | None = None
+    thursday: bool | None = None
+    friday: bool | None = None
+    saturday: bool | None = None
+    sunday: bool | None = None
+
+
+@router.patch("/{device_id}/alarms/{alarm_index}", response_class=HTMLResponse)
+async def update_alarm(
+    device_id: str,
+    alarm_index: int,
+    yoto_client: YotoClientDep,
+    request: Request,
+    form_data: Annotated[UpdateForm, Form()],
+) -> str:
+    """Update an alarm and return updated card with saved state."""
+    from yoto_up_server.templates.alarms import AlarmCard
+
+    # Fetch current config
+    current_config = await yoto_client.get_device_config(device_id)
+
+    # Update alarm
+    alarms = current_config.device.config.alarms
+
+    if 0 <= alarm_index < len(alarms):
+        alarm = alarms[alarm_index]
+        updated_alarm = alarm.model_copy(
+            update={
+                k: v
+                for k, v in form_data.model_dump(exclude_unset=True).items()
+                if k in alarm.model_fields_set
+            }
+        )
+        # update weekdays
+        for day in DAYS:
+            if (val := getattr(form_data, day)) is not None:
+                updated_alarm.weekdays[day] = val
+        alarms[alarm_index] = updated_alarm
+        current_config.device.config.alarms = alarms
+        update = _update_from_current_config(current_config)
+        await yoto_client.update_device_config(device_id, update)
+
+        # Return the updated alarm card with saved indication
+        return render_partial(
+            AlarmCard(
+                alarm=updated_alarm,
+                alarm_index=alarm_index,
+                device_id=device_id,
+                just_saved=True,
+            )
+        )
+
     return ""
 
 

@@ -4,9 +4,17 @@ Device Detail templates.
 
 from pydom import Component
 from pydom import html as d
-from yoto_up.models import Device, DeviceConfig
-from yoto_up.yoto_api_client import DeviceStatus
+from yoto_up.yoto_api_client import DeviceConfig, DeviceStatus, Device
 from yoto_up_server.utils.alpine import xbind, xon, xdata, xshow
+from yoto_up_server.templates.config_components import (
+    ConfigSection,
+    SliderSetting,
+    ToggleSetting,
+    SelectSetting,
+    TimeSetting,
+    ColorPickerSetting,
+)
+from yoto_up_server.templates.alarms import AlarmsSection
 
 
 class DeviceDetailPage(Component):
@@ -58,7 +66,6 @@ class DeviceDetailPage(Component):
             d.Div(**xshow("tab === 'settings'"))(
                 SettingsPanel(device_id=self.device.deviceId, config=self.config)
             ),
-            
             # Modal containers for JSON display
             d.Div(id="status-json-modal-container")(),
             d.Div(id="config-json-modal-container")(),
@@ -77,9 +84,7 @@ class PlaybackControlPanel(Component):
             classes="bg-white rounded-lg shadow p-6"
         )(
             d.Div(classes="flex justify-between items-center mb-4")(
-                d.H3(classes="text-lg font-semibold text-gray-900")(
-                    "Playback Control"
-                ),
+                d.H3(classes="text-lg font-semibold text-gray-900")("Playback Control"),
                 d.Button(
                     classes="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm font-medium",
                     hx_get=f"/devices/{self.device_id}/status-json-modal",
@@ -145,73 +150,287 @@ class PlaybackControlPanel(Component):
 
 
 class SettingsPanel(Component):
-    """Settings UI."""
+    """Settings UI with comprehensive configuration options."""
 
     def __init__(self, *, device_id: str, config: DeviceConfig):
         self.device_id = device_id
         self.config = config
+        self.cfg = config.device.config
 
     def render(self):
-        return d.Div(classes="bg-white rounded-lg shadow p-6")(
-            d.Div(classes="flex justify-between items-center mb-4")(
-                d.H3(classes="text-lg font-semibold text-gray-900")("Settings"),
-                d.Button(
-                    classes="px-3 py-1 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 text-sm font-medium",
-                    hx_get=f"/devices/{self.device_id}/config-json-modal",
-                    hx_target="#config-json-modal-container",
-                    hx_swap="innerHTML",
-                )("📋 Config JSON"),
+        return d.Div(classes="space-y-8")(
+            # Display Settings Section
+            ConfigSection(
+                title="Display Settings",
+                description="Control brightness and display behavior",
+            )
+            .add_child(
+                SliderSetting(
+                    label="Day Brightness",
+                    name="day_display_brightness",
+                    value=self.cfg.day_display_brightness,
+                    min_val=0,
+                    max_val=100,
+                    device_id=self.device_id,
+                    help_text="Brightness level during daytime",
+                )
+            )
+            .add_child(
+                SliderSetting(
+                    label="Night Brightness",
+                    name="night_display_brightness",
+                    value=self.cfg.night_display_brightness,
+                    min_val=0,
+                    max_val=100,
+                    device_id=self.device_id,
+                    help_text="Brightness level during nighttime",
+                )
+            )
+            .add_child(
+                SliderSetting(
+                    label="Dim Brightness",
+                    name="display_dim_brightness",
+                    value=self.cfg.display_dim_brightness,
+                    min_val=0,
+                    max_val=100,
+                    device_id=self.device_id,
+                    help_text="Brightness when display dims",
+                )
+            )
+            .add_child(
+                SelectSetting(
+                    label="Dim Timeout",
+                    name="display_dim_timeout",
+                    value=self.cfg.display_dim_timeout,
+                    options={
+                        "30": "30 seconds",
+                        "60": "1 minute",
+                        "300": "5 minutes",
+                        "600": "10 minutes",
+                        "1800": "30 minutes",
+                        "3600": "1 hour",
+                        "0": "Never",
+                    },
+                    device_id=self.device_id,
+                    help_text="Time before display dims",
+                )
+            )
+            .add_child(
+                SelectSetting(
+                    label="Clock Face",
+                    name="clock_face",
+                    value=self.cfg.clock_face,
+                    options={
+                        "0": "Analog",
+                        "1": "Digital",
+                        "2": "Minimal",
+                    },
+                    device_id=self.device_id,
+                    help_text="Clock display style",
+                )
+            )
+            .add_child(
+                SelectSetting(
+                    label="Hour Format",
+                    name="hour_format",
+                    value=self.cfg.hour_format,
+                    options={
+                        "12": "12-hour (AM/PM)",
+                        "24": "24-hour",
+                    },
+                    device_id=self.device_id,
+                )
+            )
+            .add_child(
+                ColorPickerSetting(
+                    label="Day Ambient Colour",
+                    name="ambient_colour",
+                    value=self.cfg.ambient_colour,
+                    device_id=self.device_id,
+                    help_text="Background color during day",
+                )
+            )
+            .add_child(
+                ColorPickerSetting(
+                    label="Night Ambient Colour",
+                    name="night_ambient_colour",
+                    value=self.cfg.night_ambient_colour,
+                    device_id=self.device_id,
+                    help_text="Background color at night",
+                )
             ),
-            # Brightness
-            d.Div(classes="mb-4")(
-                d.Label(classes="block text-sm font-medium text-gray-700 mb-2")(
-                    "Day Brightness"
-                ),
-                d.Input(
-                    type="range",
-                    min="0",
-                    max="100",
-                    value=str(self.config.dayDisplayBrightness),
-                    classes="w-full",
-                    name="dayDisplayBrightness",
-                    hx_post=f"/devices/{self.device_id}/config",
-                    hx_trigger="change",
-                    hx_swap="none",
-                ),
+            # Volume Settings Section
+            ConfigSection(
+                title="Volume & Audio",
+                description="Control volume levels and audio behavior",
+            )
+            .add_child(
+                SliderSetting(
+                    label="Max Volume Limit (Day)",
+                    name="max_volume_limit",
+                    value=self.cfg.max_volume_limit,
+                    min_val=0,
+                    max_val=16,
+                    device_id=self.device_id,
+                    help_text="Maximum volume allowed during day",
+                )
+            )
+            .add_child(
+                SliderSetting(
+                    label="Max Volume Limit (Night)",
+                    name="night_max_volume_limit",
+                    value=self.cfg.night_max_volume_limit,
+                    min_val=0,
+                    max_val=16,
+                    device_id=self.device_id,
+                    help_text="Maximum volume allowed at night",
+                )
+            )
+            .add_child(
+                SliderSetting(
+                    label="System Volume",
+                    name="system_volume",
+                    value=self.cfg.system_volume,
+                    min_val=0,
+                    max_val=100,
+                    device_id=self.device_id,
+                    help_text="Overall system volume",
+                )
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Bluetooth Enabled",
+                    name="bluetooth_enabled",
+                    value=self.cfg.bluetooth_enabled == "true",
+                    device_id=self.device_id,
+                    help_text="Allow Bluetooth connections",
+                )
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Bluetooth Headphones Limited",
+                    name="headphones_volume_limited",
+                    value=self.cfg.headphones_volume_limited,
+                    device_id=self.device_id,
+                    help_text="Limit volume for headphones",
+                )
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Bluetooth Headphones Enabled",
+                    name="bt_headphones_enabled",
+                    value=self.cfg.bt_headphones_enabled,
+                    device_id=self.device_id,
+                    help_text="Enable Bluetooth headphone support",
+                )
             ),
-            # Night Brightness
-            d.Div(classes="mb-4")(
-                d.Label(classes="block text-sm font-medium text-gray-700 mb-2")(
-                    "Night Brightness"
-                ),
-                d.Input(
-                    type="range",
-                    min="0",
-                    max="100",
-                    value=str(self.config.nightDisplayBrightness),
-                    classes="w-full",
-                    name="nightDisplayBrightness",
-                    hx_post=f"/devices/{self.device_id}/config",
-                    hx_trigger="change",
-                    hx_swap="none",
-                ),
+            # Time Schedule Section
+            ConfigSection(
+                title="Time Schedule",
+                description="Set day and night time boundaries",
+            )
+            .add_child(
+                TimeSetting(
+                    label="Day Start Time",
+                    name="day_time",
+                    value=self.cfg.day_time,
+                    device_id=self.device_id,
+                    help_text="When daytime settings become active",
+                )
+            )
+            .add_child(
+                TimeSetting(
+                    label="Night Start Time",
+                    name="night_time",
+                    value=self.cfg.night_time,
+                    device_id=self.device_id,
+                    help_text="When nighttime settings become active",
+                )
             ),
-            # Max Volume
-            d.Div(classes="mb-4")(
-                d.Label(classes="block text-sm font-medium text-gray-700 mb-2")(
-                    "Max Volume Limit"
-                ),
-                d.Input(
-                    type="range",
-                    min="0",
-                    max="16",
-                    value=str(self.config.maxVolumeLimit),
-                    classes="w-full",
-                    name="maxVolumeLimit",
-                    hx_post=f"/devices/{self.device_id}/config",
-                    hx_trigger="change",
-                    hx_swap="none",
-                ),
+            # Controls Section
+            ConfigSection(
+                title="Controls",
+                description="Configure button and control behavior",
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Pause with Volume Down",
+                    name="pause_volume_down",
+                    value=self.cfg.pause_volume_down,
+                    device_id=self.device_id,
+                    help_text="Pressing volume down will pause playback",
+                )
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Pause with Power Button",
+                    name="pause_power_button",
+                    value=self.cfg.pause_power_button,
+                    device_id=self.device_id,
+                    help_text="Pressing power button will pause playback",
+                )
+            )
+            .add_child(
+                SelectSetting(
+                    label="Shutdown Timeout",
+                    name="shutdown_timeout",
+                    value=self.cfg.shutdown_timeout,
+                    options={
+                        "300": "5 minutes",
+                        "600": "10 minutes",
+                        "900": "15 minutes",
+                        "1800": "30 minutes",
+                        "3600": "1 hour",
+                        "7200": "2 hours",
+                        "0": "Never",
+                    },
+                    device_id=self.device_id,
+                    help_text="Auto-shutdown after inactivity",
+                )
+            ),
+            # Content Settings Section
+            ConfigSection(
+                title="Content Settings",
+                description="Control available content and features",
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Repeat All",
+                    name="repeat_all",
+                    value=self.cfg.repeat_all,
+                    device_id=self.device_id,
+                    help_text="Always repeat content when finished",
+                )
+            )
+            .add_child(
+                ToggleSetting(
+                    label="Show Diagnostics",
+                    name="show_diagnostics",
+                    value=self.cfg.show_diagnostics,
+                    device_id=self.device_id,
+                    help_text="Show diagnostic information on device",
+                )
+            )
+            .add_child(
+                SelectSetting(
+                    label="Log Level",
+                    name="log_level",
+                    value=self.cfg.log_level,
+                    options={
+                        "0": "None",
+                        "1": "Error",
+                        "2": "Warning",
+                        "3": "Info",
+                        "4": "Debug",
+                    },
+                    device_id=self.device_id,
+                    help_text="Device logging verbosity",
+                )
+            ),
+            # Alarms Section
+            AlarmsSection(
+                device_id=self.device_id,
+                alarms=self.cfg.alarms,
             ),
         )
 

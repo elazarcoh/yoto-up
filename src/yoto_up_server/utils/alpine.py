@@ -204,3 +204,78 @@ def xshow(condition: str | None = None):
     if condition is not None:
         return WithValue("x-show", condition)
     return Xshow()
+
+
+# =======================================================================
+# Xtext Attribute Builder
+# =======================================================================
+def xtext(value: str) -> WithValue:
+    return WithValue("x-text", value)
+
+
+# =======================================================================
+# xmodel Attribute Builder
+
+
+class XmodelModifiers:
+    lazy: "XmodelModifier"
+    number: "XmodelModifier"
+    boolean: "XmodelModifier"
+
+    @property
+    def debounce(self) -> "XmodelWithTimeoutModifier":
+        return XmodelWithTimeoutModifier(f"{self.name}.debounce")
+
+    @property
+    def throttle(self) -> "XmodelWithTimeoutModifier":
+        return XmodelWithTimeoutModifier(f"{self.name}.throttle")
+
+    fill: "XmodelModifier"
+
+
+class XmodelWithTimeoutModifier(XmodelModifiers, _AttrBase):
+    @overload
+    def __call__(self) -> "XmodelWithTimeoutModifier": ...
+    @overload
+    def __call__(self, timeout_or_value: None) -> "XmodelWithTimeoutModifier": ...
+    @overload
+    def __call__(self, timeout_or_value: int) -> "XmodelModifier": ...
+    @overload
+    def __call__(self, timeout_or_value: str) -> WithValue: ...
+
+    def __call__(self, timeout_or_value: str | None = None):
+        if timeout_or_value is None:
+            return self
+        elif isinstance(timeout_or_value, int):
+            return XmodelModifier(f"{self.name}.{timeout_or_value}ms")
+        else:
+            # treat as value
+            return WithValue(self.name, timeout_or_value)
+
+
+class XmodelModifier(_AttrBase, XmodelModifiers):
+    @classproperty
+    def NEXT(cls) -> type["XmodelModifier"]:
+        return XmodelModifier
+
+    SEP = "."
+
+
+class Xmodel(_AttrBase, XmodelModifiers):
+    NEXT = XmodelModifier
+    SEP = "."
+
+    def __init__(self):
+        super().__init__("x-model")
+
+
+@overload
+def xmodel(value: str) -> WithValue: ...
+@overload
+def xmodel(value: None = None) -> Xmodel: ...
+
+
+def xmodel(value: str | None = None):
+    if value is not None:
+        return WithValue("x-model", value)
+    return Xmodel()

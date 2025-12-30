@@ -41,6 +41,9 @@ class HTMX:
             cross_origin="anonymous",
         )
 
+    def transformer(self) -> PropertyTransformer:
+        return HTMXTransformer()
+
 
 class HTMXExtension(t.Protocol):
     name: str
@@ -96,9 +99,7 @@ class HTMXJsonEncExtension(HTMXExtension):
     mapping = {}
 
     def __init__(self, version="2.0.1"):
-        self.script = PartialScript(
-            src="/static/js/json-enc.js"
-        )
+        self.script = PartialScript(src="/static/js/json-enc.js")
 
 
 class HTMXMultiSwapExtension(HTMXExtension):
@@ -107,9 +108,7 @@ class HTMXMultiSwapExtension(HTMXExtension):
     mapping = {}
 
     def __init__(self, version="2.0.0"):
-        self.script = PartialScript(
-            src="/static/js/multi-swap.js"
-        )
+        self.script = PartialScript(src="/static/js/multi-swap.js")
 
 
 class HTMXLoadingStatesExtension(HTMXExtension):
@@ -120,9 +119,7 @@ class HTMXLoadingStatesExtension(HTMXExtension):
     mapping = {}
 
     def __init__(self, version="2.0.0"):
-        self.script = PartialScript(
-            src="/static/js/loading-states.js"
-        )
+        self.script = PartialScript(src="/static/js/loading-states.js")
         self.style = Style("@layer utilities { [data-loading] { @apply hidden; } }")
 
     def render(self):
@@ -138,9 +135,7 @@ class HTMXClassToolsExtension(HTMXExtension):
     }
 
     def __init__(self, version="2.0.1"):
-        self.script = PartialScript(
-            src="/static/js/class-tools.js"
-        )
+        self.script = PartialScript(src=f"https://unpkg.com/htmx-ext-class-tools@{version}/class-tools.js")
 
 
 class HTMXDownloadExtension(HTMXExtension):
@@ -158,7 +153,6 @@ class HTMXOobAlternativeExtension(HTMXExtension):
 
     def __init__(self):
         self.script = PartialScript(src="/static/js/oob-alternatives.js")
-
 
 
 class HtmxExtensions:
@@ -361,9 +355,9 @@ def _test_htmx_transformer():
         element_dict = transform_props(
             ContextNode(element, context=context), context=context
         )
-        assert (
-            expected in element_dict
-        ), f"Expected key {expected} not found ({element_dict}, {key=}, {value=})"  # nosec: B101
+        assert expected in element_dict, (
+            f"Expected key {expected} not found ({element_dict}, {key=}, {value=})"
+        )  # nosec: B101
 
     for key, expected in htmx_attributes.items():
         test_transformer(key, "value", expected)

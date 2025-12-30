@@ -13,20 +13,26 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time as dt_time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Annotated, Any, Callable, Optional, Literal
 from urllib.parse import urljoin
 
 import httpx
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EncodedStr,
+    EncoderProtocol,
+    Field,
+    model_validator,
+)
 
 from yoto_up.models import (
     Card,
     Device,
-    DeviceConfig,
 )
 from yoto_up_server.models import DisplayIconManifest
 
@@ -381,6 +387,278 @@ class DeviceStatus(BaseModel):
         alias="wifiStrength",
         description="Represents the strength of the WiFi connection in decibels.",
     )
+
+
+class DeviceConfigResponseStatus(BaseModel):
+    active_card: str = Field(..., alias="activeCard")
+    alive_time: Optional[int] = Field(None, alias="aliveTime")
+    als: int
+    battery: Optional[int]
+    battery_level: int = Field(..., alias="batteryLevel")
+    battery_level_raw: int = Field(..., alias="batteryLevelRaw")
+    battery_remaining: Optional[int] = Field(None, alias="batteryRemaining")
+    bg_download: int = Field(..., alias="bgDownload")
+    bluetooth_hp: int = Field(..., alias="bluetoothHp")
+    buzz_errors: int = Field(..., alias="buzzErrors")
+    bytes_ps: int = Field(..., alias="bytesPS")
+    card_inserted: int = Field(..., alias="cardInserted")
+    chg_stat_level: Optional[int] = Field(None, alias="chgStatLevel")
+    charging: int
+    day: int
+    day_bright: Optional[int] = Field(None, alias="dayBright")
+    dbat_timeout: Optional[int] = Field(None, alias="dbatTimeout")
+    dnow_brightness: Optional[int] = Field(None, alias="dnowBrightness")
+    device_id: str = Field(..., alias="deviceId")
+    errors_logged: int = Field(..., alias="errorsLogged")
+    fail_data: Optional[str] = Field(None, alias="failData")
+    fail_reason: Optional[str] = Field(None, alias="failReason")
+    free: Optional[int]
+    free32: Optional[int] = Field(None, alias="free32")
+    free_disk: Optional[int] = Field(None, alias="freeDisk")
+    free_dma: Optional[int] = Field(None, alias="freeDMA")
+    fw_version: str = Field(..., alias="fwVersion")
+    headphones: int
+    last_seen_at: Optional[datetime] = Field(None, alias="lastSeenAt")
+    missed_logs: Optional[int] = Field(None, alias="missedLogs")
+    nfc_errs: str = Field(..., alias="nfcErrs")
+    nfc_lock: int = Field(..., alias="nfcLock")
+    night_bright: Optional[int] = Field(None, alias="nightBright")
+    nightlight_mode: str = Field(..., alias="nightlightMode")
+    playing_status: int = Field(..., alias="playingStatus")
+    power_caps: Optional[int] = Field(None, alias="powerCaps")
+    power_src: int = Field(..., alias="powerSrc")
+    qi_otp: Optional[int] = Field(None, alias="qiOtp")
+    sd_info: Optional[str] = Field(None, alias="sd_info")
+    shut_down: Optional[int] = Field(None, alias="shutDown")
+    shutdown_timeout: Optional[int] = Field(None, alias="shutdownTimeout")
+    ssid: str
+    status_version: Optional[int] = Field(None, alias="statusVersion")
+    temp: str
+    time_format: Optional[str] = Field(None, alias="timeFormat")
+    total_disk: Optional[int] = Field(None, alias="totalDisk")
+    twdt: int
+    updated_at: datetime = Field(..., alias="updatedAt")
+    up_time: int = Field(..., alias="upTime")
+    user_volume: int = Field(..., alias="userVolume")
+    utc_offset: int = Field(..., alias="utcOffset")
+    utc_time: int = Field(..., alias="utcTime")
+    volume: int
+    wifi_restarts: Optional[int] = Field(None, alias="wifiRestarts")
+    wifi_strength: int = Field(..., alias="wifiStrength")
+
+
+Day = Literal[
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+]
+DAYS: list[Day] = [
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+]
+
+
+class ConfigAlarms(BaseModel):
+    weekdays: dict[Day, bool]
+    time: dt_time
+    tone_id: Optional[str]
+    volume_level: str
+    is_enabled: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def decode(cls, data: str | dict) -> Any:
+        if isinstance(data, dict):
+            return data
+        parts = data.split(",")
+        parts = {idx: part for idx, part in enumerate(parts)}
+
+        #
+        # examples: "0000001,0305,j07m0,,,0,1"
+        #           "1110000,2300,hCIKn,,,10,1"
+        #
+        weekdays_part = parts.get(0, "0000000")
+        weekdays: dict[Day, bool] = {
+            day: weekdays_part[idx] == "1" for idx, day in enumerate(DAYS)
+        }
+
+        time_str = parts.get(1, "0000")
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        alarm_time = dt_time(hour=hour, minute=minute)
+
+        tone_id = parts.get(2, "")
+
+        # unknown parts
+        unknown_3 = parts.get(3, "")
+        unknown_4 = parts.get(4, "")
+
+        volume_level = parts.get(5, "0")
+        is_enabled = parts.get(6, "0") == "1"
+
+        return dict(
+            weekdays=weekdays,
+            time=alarm_time,
+            tone_id=tone_id if tone_id else None,
+            volume_level=volume_level,
+            is_enabled=is_enabled,
+        )
+
+    def encode(self) -> str:
+        weekdays_part = "".join(
+            ["1" if self.weekdays.get(day, False) else "0" for day in DAYS]
+        )
+        time_part = f"{self.time.hour:02}{self.time.minute:02}"
+        tone_part = self.tone_id or ""
+        unknown_3 = ""
+        unknown_4 = ""
+        volume_part = self.volume_level
+        enabled_part = "1" if self.is_enabled else "0"
+        return ",".join(
+            [
+                weekdays_part,
+                time_part,
+                tone_part,
+                unknown_3,
+                unknown_4,
+                volume_part,
+                enabled_part,
+            ]
+        )
+
+
+class DeviceConfigResponseShortcutsMode(BaseModel):
+    class Content(BaseModel):
+        cmd: str
+        params: dict[str, str]
+
+    content: list[Content]
+
+
+class DeviceConfigResponseShortcuts(BaseModel):
+    version_id: str = Field(..., alias="versionId")
+    modes: dict[Literal["day", "night"], DeviceConfigResponseShortcutsMode]
+
+
+class DeviceConfigResponseConfig(BaseModel):
+    locale: str
+    bluetooth_enabled: str = Field(..., alias="bluetoothEnabled")
+    repeat_all: bool = Field(..., alias="repeatAll")
+    show_diagnostics: bool = Field(..., alias="showDiagnostics")
+    bt_headphones_enabled: bool = Field(..., alias="btHeadphonesEnabled")
+    pause_volume_down: bool = Field(..., alias="pauseVolumeDown")
+    pause_power_button: bool = Field(..., alias="pausePowerButton")
+    display_dim_timeout: str = Field(..., alias="displayDimTimeout")
+    shutdown_timeout: str = Field(..., alias="shutdownTimeout")
+    headphones_volume_limited: bool = Field(..., alias="headphonesVolumeLimited")
+    day_time: str = Field(..., alias="dayTime")
+    max_volume_limit: str = Field(..., alias="maxVolumeLimit")
+    ambient_colour: str = Field(..., alias="ambientColour")
+    day_display_brightness: str = Field(..., alias="dayDisplayBrightness")
+    day_yoto_daily: str = Field(..., alias="dayYotoDaily")
+    day_yoto_radio: str = Field(..., alias="dayYotoRadio")
+    day_sounds_off: str = Field(..., alias="daySoundsOff")
+    night_time: str = Field(..., alias="nightTime")
+    night_max_volume_limit: str = Field(..., alias="nightMaxVolumeLimit")
+    night_ambient_colour: str = Field(..., alias="nightAmbientColour")
+    night_display_brightness: str = Field(..., alias="nightDisplayBrightness")
+    night_yoto_daily: str = Field(..., alias="nightYotoDaily")
+    night_yoto_radio: str = Field(..., alias="nightYotoRadio")
+    night_sounds_off: str = Field(..., alias="nightSoundsOff")
+    hour_format: str = Field(..., alias="hourFormat")
+    display_dim_brightness: str = Field(..., alias="displayDimBrightness")
+    system_volume: str = Field(..., alias="systemVolume")
+    volume_level: str = Field(..., alias="volumeLevel")
+    clock_face: str = Field(..., alias="clockFace")
+    log_level: str = Field(..., alias="logLevel")
+    alarms: list[ConfigAlarms]
+
+
+class DeviceConfigResponseDevice(BaseModel):
+    device_id: str = Field(..., alias="deviceId")
+    name: str
+    error_code: Optional[str] = Field(None, alias="errorCode")
+    fw_version: str = Field(..., alias="fwVersion")
+    pop_code: str = Field(..., alias="popCode")
+    release_channel_id: str = Field(..., alias="releaseChannelId")
+    release_channel_version: str = Field(..., alias="releaseChannelVersion")
+    activation_pop_code: str = Field(..., alias="activationPopCode")
+    registration_code: str = Field(..., alias="registrationCode")
+    device_type: str = Field(..., alias="deviceType")
+    device_family: str = Field(..., alias="deviceFamily")
+    device_group: str = Field(..., alias="deviceGroup")
+    generation: str
+    form_factor: str = Field(..., alias="formFactor")
+    mac: str
+    online: bool
+    geo_timezone: str = Field(..., alias="geoTimezone")
+    get_posix: str = Field(..., alias="getPosix")
+    status: DeviceConfigResponseStatus
+    config: DeviceConfigResponseConfig
+    shortcuts: DeviceConfigResponseShortcuts
+
+
+class DeviceConfig(BaseModel):
+    """Device configuration response"""
+
+    device: DeviceConfigResponseDevice
+
+
+class DeviceConfigUpdate(BaseModel):
+    class UpdateConfig(BaseModel):
+        locale: Optional[str]
+        bluetooth_enabled: Annotated[Optional[str], Field(alias="bluetoothEnabled")]
+        repeat_all: Annotated[Optional[bool], Field(alias="repeatAll")]
+        show_diagnostics: Annotated[Optional[bool], Field(alias="showDiagnostics")]
+        bt_headphones_enabled: Annotated[
+            Optional[bool], Field(alias="btHeadphonesEnabled")
+        ]
+        pause_volume_down: Annotated[Optional[bool], Field(alias="pauseVolumeDown")]
+        pause_power_button: Annotated[Optional[bool], Field(alias="pausePowerButton")]
+        display_dim_timeout: Annotated[Optional[str], Field(alias="displayDimTimeout")]
+        shutdown_timeout: Annotated[Optional[str], Field(alias="shutdownTimeout")]
+        headphones_volume_limited: Annotated[
+            Optional[bool], Field(alias="headphonesVolumeLimited")
+        ]
+        day_time: Annotated[Optional[str], Field(alias="dayTime")]
+        max_volume_limit: Annotated[Optional[str], Field(alias="maxVolumeLimit")]
+        ambient_colour: Annotated[Optional[str], Field(alias="ambientColour")]
+        day_display_brightness: Annotated[
+            Optional[str], Field(None, alias="dayDisplayBrightness")
+        ]
+        day_yoto_daily: Annotated[Optional[str], Field(alias="dayYotoDaily")]
+        day_yoto_radio: Annotated[Optional[str], Field(alias="dayYotoRadio")]
+        day_sounds_off: Annotated[Optional[str], Field(alias="daySoundsOff")]
+        night_time: Annotated[Optional[str], Field(alias="nightTime")]
+        night_max_volume_limit: Annotated[
+            Optional[str], Field(alias="nightMaxVolumeLimit")
+        ]
+        night_ambient_colour: Annotated[
+            Optional[str], Field(alias="nightAmbientColour")
+        ]
+        night_display_brightness: Annotated[
+            Optional[str], Field(None, alias="nightDisplayBrightness")
+        ]
+        night_yoto_daily: Annotated[Optional[str], Field(alias="nightYotoDaily")]
+        night_yoto_radio: Annotated[Optional[str], Field(alias="nightYotoRadio")]
+        night_sounds_off: Annotated[Optional[str], Field(alias="nightSoundsOff")]
+        hour_format: Annotated[Optional[str], Field(alias="hourFormat")]
+        display_dim_brightness: Annotated[
+            Optional[str], Field(None, alias="displayDimBrightness")
+        ]
+        system_volume: Annotated[Optional[str], Field(alias="systemVolume")]
+        volume_level: Annotated[Optional[str], Field(alias="volumeLevel")]
+        clock_face: Annotated[Optional[str], Field(alias="clockFace")]
+        log_level: Annotated[Optional[str], Field(alias="logLevel")]
+        alarms: Optional[list[str]]
+
+        model_config = ConfigDict(validate_by_name=True)
+
+    name: str
+    config: UpdateConfig
 
 
 # ============================================================================
@@ -1350,25 +1628,14 @@ class YotoApiClient:
     async def update_device_config(
         self,
         device_id: str,
-        name: str,
-        config: DeviceConfig,
-    ) -> DeviceConfig:
-        """
-        Update device configuration.
-
-        Args:
-            device_id: Device ID
-            name: Device name
-            config: DeviceConfig object with updates
-
-        Returns:
-            Updated DeviceConfig
-        """
-        payload = {"name": name, **config.model_dump(exclude_none=True)}
+        config: DeviceConfigUpdate,
+    ) -> None:
         response = await self._request(
-            "PUT", f"/device-v2/{device_id}/config", json=payload
+            "PUT",
+            f"/device-v2/{device_id}/config",
+            json=config.model_dump(exclude_none=True, by_alias=True),
         )
-        return DeviceConfig.model_validate(response.json())
+        response.raise_for_status()
 
     async def send_device_command(
         self,
