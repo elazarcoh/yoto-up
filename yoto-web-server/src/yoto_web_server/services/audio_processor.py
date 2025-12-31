@@ -6,8 +6,8 @@ Wraps the AudioNormalizer and provides audio processing capabilities.
 
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import List, Optional, Callable, Union
 
 from loguru import logger
 
@@ -24,7 +24,7 @@ class AudioProcessorService:
     def __init__(
         self,
         debug_enabled: bool = False,
-        debug_dir: Optional[Union[str, Path]] = None,
+        debug_dir: str | Path | None = None,
     ) -> None:
         self.debug_enabled = debug_enabled
         self.debug_dir = Path(debug_dir) if debug_dir else Path("./debug")
@@ -40,13 +40,13 @@ class AudioProcessorService:
 
     def normalize(
         self,
-        input_paths: List[str],
-        output_dir: Optional[str] = None,
+        input_paths: list[str],
+        output_dir: str | None = None,
         target_level: float = -23.0,
         true_peak: float = -1.0,
         batch_mode: bool = False,
-        progress_callback: Optional[Callable[[str, float], None]] = None,
-    ) -> List[str]:
+        progress_callback: Callable[[str, float], None] | None = None,
+    ) -> list[str]:
         """
         Normalize audio files.
 
@@ -72,7 +72,7 @@ class AudioProcessorService:
         os.makedirs(output_dir, exist_ok=True)
 
         if self.debug_enabled:
-            logger.debug(f"Normalizing audio files in debug mode")
+            logger.debug("Normalizing audio files in debug mode")
             logger.debug(f"Input files: {input_paths}")
             logger.debug(f"Output directory: {output_dir}")
 
@@ -102,7 +102,7 @@ class AudioProcessorService:
     def trim_silence(
         self,
         input_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         threshold_db: float = -40.0,
         min_silence_duration: float = 0.5,
     ) -> str:
@@ -134,9 +134,7 @@ class AudioProcessorService:
 
             # Detect and trim leading/trailing silence
             start_trim = detect_leading_silence(audio, silence_threshold=threshold_db)
-            end_trim = detect_leading_silence(
-                audio.reverse(), silence_threshold=threshold_db
-            )
+            end_trim = detect_leading_silence(audio.reverse(), silence_threshold=threshold_db)
 
             trimmed = audio[start_trim : len(audio) - end_trim]
 
@@ -158,11 +156,11 @@ class AudioProcessorService:
     def generate_waveform(
         self,
         input_path: str,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         width: int = 800,
         height: int = 100,
         color: str = "#4CAF50",
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Generate a waveform image for an audio file.
 
@@ -198,3 +196,14 @@ class AudioProcessorService:
         except Exception as e:
             logger.error(f"Waveform generation failed: {e}")
             return None
+
+    def cleanup_temp_files(self):
+        """Clean up temporary files."""
+        import shutil
+
+        try:
+            if self._temp_dir.exists():
+                shutil.rmtree(self._temp_dir)
+                self._temp_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to cleanup temp files: {e}")

@@ -4,18 +4,15 @@ Base template components.
 Provides the base HTML structure and common rendering utilities.
 """
 
-from typing import Optional, Union
-
 from fastapi import Request
 from pydom import Component, render
+from pydom import html as d
 from pydom.context import get_context
 from pydom.context.standard import transformers
 from pydom.types import Renderable
-from pydom import html as d
 
 from yoto_web_server.container import Container
 from yoto_web_server.utils.setup_htmx import HTMX, HtmxExtensions
-
 
 # Initialize HTMX with extensions
 htmx = HTMX()
@@ -32,14 +29,15 @@ get_context().add_prop_transformer(
     ],
 )
 
+
 class BaseLayout(Component):
     """Base HTML layout with HTMX and navigation."""
 
     def __init__(
         self,
         *,
-        title: str = "Yoto Web Server",
-        content: Optional[Renderable] = None,
+        title: str = "Yoto Up",
+        content: Renderable | None = None,
         is_authenticated: bool = False,
     ) -> None:
         self.title = title
@@ -59,9 +57,7 @@ class BaseLayout(Component):
                 HtmxExtensions.sse.script(),
                 HtmxExtensions.class_tools.script(),
                 # Alpine.js for simple interactivity
-                d.Script(
-                    src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True
-                ),
+                d.Script(src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True),
                 # App JavaScript
                 d.Script(src="/static/js/app.js", defer=True),
                 # Custom styles
@@ -95,15 +91,13 @@ class BaseLayout(Component):
                 # Navigation
                 Navigation(is_authenticated=self.is_authenticated),
                 # Main content
-                d.Main(
-                    classes="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full"
-                )(
+                d.Main(classes="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow w-full")(
                     self.content or d.Div()("No content"),
                 ),
                 # Footer
                 d.Footer(classes="bg-gray-800 text-white py-8 mt-auto")(
                     d.Div(classes="max-w-7xl mx-auto px-4 text-center")(
-                        d.Span()("Yoto Web Server"),
+                        d.Span()("Yoto Up Server"),
                         d.Span()(" | "),
                         d.A(
                             href="https://github.com/xkjq/yoto-up",
@@ -144,8 +138,8 @@ class Navigation(Component):
                 [
                     ("Playlists", "/playlists/"),
                     ("Devices", "/devices/"),
+                    ("Icons", "/icons/"),
                     # ("Upload", "/upload/"),
-                    # ("Icons", "/icons/"),
                     # ("Cards", "/cards/"),
                 ]
             )
@@ -159,7 +153,7 @@ class Navigation(Component):
                             classes="flex-shrink-0 flex items-center text-indigo-600 font-bold text-xl",
                         )(
                             d.Span(classes="mr-2 text-2xl")("🎵"),
-                            d.Span()("Yoto Web Server"),
+                            d.Span()("Yoto Up"),
                         ),
                         d.Div(classes="hidden sm:ml-6 sm:flex sm:space-x-8")(
                             *[
@@ -222,9 +216,7 @@ class Alert(Component):
             else None
         )
 
-        return d.Div(
-            classes=f"rounded-md p-4 mb-4 flex items-center {color_class}", role="alert"
-        )(
+        return d.Div(classes=f"rounded-md p-4 mb-4 flex items-center {color_class}", role="alert")(
             d.Span(classes="flex-grow")(self.message),
             close_btn,
         )
@@ -236,9 +228,9 @@ class Card(Component):
     def __init__(
         self,
         *,
-        title: Optional[str] = None,
-        content: Optional[Component] = None,
-        footer: Optional[Component] = None,
+        title: str | None = None,
+        content: Component | None = None,
+        footer: Component | None = None,
     ) -> None:
         self.title = title
         self.content = content
@@ -254,9 +246,7 @@ class Card(Component):
         )
 
         footer_el = (
-            d.Div(classes="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200")(
-                self.footer
-            )
+            d.Div(classes="px-4 py-4 sm:px-6 bg-gray-50 border-t border-gray-200")(self.footer)
             if self.footer
             else None
         )
@@ -286,7 +276,7 @@ class LoadingSpinner(Component):
 class ProgressBar(Component):
     """Progress bar component."""
 
-    def __init__(self, *, progress: float = 0.0, label: Optional[str] = None) -> None:
+    def __init__(self, *, progress: float = 0.0, label: str | None = None) -> None:
         self.progress = max(0, min(100, progress * 100))
         self.label = label
 
@@ -296,9 +286,7 @@ class ProgressBar(Component):
                 d.Span(classes="text-sm font-medium text-indigo-700")(self.label)
                 if self.label
                 else None,
-                d.Span(classes="text-sm font-medium text-indigo-700")(
-                    f"{self.progress:.0f}%"
-                ),
+                d.Span(classes="text-sm font-medium text-indigo-700")(f"{self.progress:.0f}%"),
             ),
             d.Div(classes="w-full bg-gray-200 rounded-full h-2.5")(
                 d.Div(
@@ -313,7 +301,7 @@ def render_page(
     title: str,
     content: Renderable,
     request: Request,
-    is_authenticated: Optional[bool] = None,
+    is_authenticated: bool | None = None,
 ) -> str:
     """
     Render a full HTML page.
@@ -344,9 +332,7 @@ def render_page(
                     # Validate and decrypt cookie to get session_id
                     container: Container = request.app.state.container
                     session_service = container.session_service()
-                    cookie_payload = session_service.validate_and_decrypt_cookie(
-                        cookie_value
-                    )
+                    cookie_payload = session_service.validate_and_decrypt_cookie(cookie_value)
                     if cookie_payload:
                         session_id = cookie_payload.session_id
 
@@ -354,9 +340,7 @@ def render_page(
             if session_id:
                 container: Container = request.app.state.container
                 session_api_service = container.session_aware_api_service()
-                is_authenticated = session_api_service.is_session_authenticated(
-                    session_id
-                )
+                is_authenticated = session_api_service.is_session_authenticated(session_id)
             else:
                 is_authenticated = False
         except Exception:
@@ -371,7 +355,7 @@ def render_page(
     return render(layout)
 
 
-def render_partial(content: Union[Renderable, str]) -> str:
+def render_partial(content: Renderable | str) -> str:
     """
     Render an HTML partial (for HTMX responses).
 

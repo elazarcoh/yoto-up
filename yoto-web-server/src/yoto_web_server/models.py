@@ -5,32 +5,11 @@ Defines data structures for API requests/responses, templates, and internal serv
 Re-exports models from api.models for convenience.
 """
 
-from typing import Literal, Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
-from pydantic import BaseModel, Field
+from typing import Any, Literal
 
-# Re-export Yoto API models for convenience
-from yoto_web_server.api.models import (
-    Card,
-    Chapter,
-    Track,
-    ChapterDisplay,
-    TrackDisplay,
-    CardContent,
-    CardMetadata as YotoCardMetadata,
-    CardConfig,
-    Device,
-    DeviceStatus,
-    DeviceConfig,
-    ConfigAlarms,
-    Day,
-    DAYS,
-    TokenData,
-    TokenResponse,
-    DisplayIcon,
-    DisplayIconManifest,
-)
+from pydantic import BaseModel, Field
 
 
 # Upload Models
@@ -54,8 +33,8 @@ class UploadJob(BaseModel):
     filename: str
     status: UploadStatus = UploadStatus.QUEUED
     progress: float = Field(default=0.0, ge=0.0, le=100.0)
-    error: Optional[str] = None
-    temp_path: Optional[str] = None
+    error: str | None = None
+    temp_path: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Config:
@@ -70,12 +49,10 @@ class UploadFileStatus(BaseModel):
     size_bytes: int
     status: UploadStatus = UploadStatus.PENDING
     progress: float = Field(default=0.0, ge=0.0, le=100.0)
-    error: Optional[str] = None
-    temp_path: Optional[str] = None
-    uploaded_at: Optional[datetime] = None
-    processing_info: Dict[str, Any] = Field(
-        default_factory=dict
-    )  # normalization, analysis, etc.
+    error: str | None = None
+    temp_path: str | None = None
+    uploaded_at: datetime | None = None
+    processing_info: dict[str, Any] = Field(default_factory=dict)  # normalization, analysis, etc.
 
 
 UploadMode = Literal["chapters", "tracks"]
@@ -87,10 +64,10 @@ class UploadSession(BaseModel):
     session_id: str
     playlist_id: str
     user_id: str
-    user_session_id: Optional[str] = None  # The user's auth session ID for API calls
+    user_session_id: str | None = None  # The user's auth session ID for API calls
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
 
     # Upload configuration
     upload_mode: UploadMode = "chapters"  # chapters or tracks
@@ -103,10 +80,11 @@ class UploadSession(BaseModel):
     show_waveform: bool = False
 
     # Session status
-    files: List[UploadFileStatus] = Field(default_factory=list)
+    files: list[UploadFileStatus] = Field(default_factory=list)
     overall_status: UploadStatus = UploadStatus.PENDING
     overall_progress: float = Field(default=0.0, ge=0.0, le=100.0)
-    error_message: Optional[str] = None
+    error_message: str | None = None
+    new_chapter_ids: list[str] = Field(default_factory=list)
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
@@ -117,11 +95,11 @@ class UploadSessionInitRequest(BaseModel):
 
     upload_mode: UploadMode = "chapters"
     normalize: bool = False
-    target_lufs: Optional[float] = -23.0
+    target_lufs: float | None = -23.0
     normalize_batch: bool = False
     analyze_intro_outro: bool = False
-    segment_seconds: Optional[float] = 10.0
-    similarity_threshold: Optional[float] = 0.75
+    segment_seconds: float | None = 10.0
+    similarity_threshold: float | None = 0.75
     show_waveform: bool = False
 
 
@@ -149,11 +127,11 @@ class IconMetadata(BaseModel):
     """Metadata about an icon."""
 
     source: IconSource
-    category: Optional[str] = None
-    tags: List[str] = Field(default_factory=list)
-    color: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
+    category: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    color: str | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 class Icon(BaseModel):
@@ -172,8 +150,8 @@ class Icon(BaseModel):
 class IconSearchRequest(BaseModel):
     """Request for icon search."""
 
-    query: Optional[str] = None
-    source: Optional[IconSource] = None
+    query: str | None = None
+    source: IconSource | None = None
     fuzzy: bool = False
     threshold: float = Field(default=0.6, ge=0.0, le=1.0)
 
@@ -181,9 +159,9 @@ class IconSearchRequest(BaseModel):
 class IconSearchResponse(BaseModel):
     """Response from icon search."""
 
-    query: Optional[str] = None
-    source: Optional[IconSource] = None
-    icons: List[Icon]
+    query: str | None = None
+    source: IconSource | None = None
+    icons: list[Icon]
     total: int
 
 
@@ -193,15 +171,15 @@ class IconSearchResponse(BaseModel):
 class CardMetadata(BaseModel):
     """Metadata for a card (server model)."""
 
-    category: Optional[str] = None
-    genre: Optional[List[str]] = None
-    author: Optional[str] = None
-    description: Optional[str] = None
-    cover: Optional[Dict[str, str]] = None
-    imageL: Optional[str] = None
-    imageM: Optional[str] = None
-    imageS: Optional[str] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    category: str | None = None
+    genre: list[str] | None = None
+    author: str | None = None
+    description: str | None = None
+    cover: dict[str, str] | None = None
+    imageL: str | None = None
+    imageM: str | None = None
+    imageS: str | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         extra = "allow"  # Allow additional metadata fields
@@ -212,11 +190,11 @@ class PlaylistCard(BaseModel):
 
     cardId: str
     title: str
-    metadata: Optional[CardMetadata] = None
-    tags: Optional[List[str]] = None
-    slug: Optional[str] = None
-    createdAt: Optional[datetime] = None
-    extra: Dict[str, Any] = Field(default_factory=dict)
+    metadata: CardMetadata | None = None
+    tags: list[str] | None = None
+    slug: str | None = None
+    createdAt: datetime | None = None
+    extra: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
         extra = "allow"
@@ -226,17 +204,17 @@ class PlaylistCard(BaseModel):
 class CardFilterRequest(BaseModel):
     """Request to filter cards."""
 
-    title_filter: Optional[str] = None
-    category: Optional[str] = None
-    genre: Optional[str] = None  # Comma-separated
+    title_filter: str | None = None
+    category: str | None = None
+    genre: str | None = None  # Comma-separated
 
 
 class CardListResponse(BaseModel):
     """Response with list of cards."""
 
-    cards: List[PlaylistCard]
+    cards: list[PlaylistCard]
     total: int
-    filters: Optional[CardFilterRequest] = None
+    filters: CardFilterRequest | None = None
 
 
 # Authentication Models
@@ -247,9 +225,9 @@ class TokenInfo(BaseModel):
 
     access_token: str
     token_type: str = "Bearer"
-    expires_in: Optional[int] = None
-    refresh_token: Optional[str] = None
-    id_token: Optional[str] = None
+    expires_in: int | None = None
+    refresh_token: str | None = None
+    id_token: str | None = None
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -257,8 +235,8 @@ class OAuthCallbackRequest(BaseModel):
 
     code: str
     state: str
-    error: Optional[str] = None
-    error_description: Optional[str] = None
+    error: str | None = None
+    error_description: str | None = None
 
 
 # UI Models
@@ -269,14 +247,14 @@ class PageContent(BaseModel):
 
     title: str
     content: str  # HTML content
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class PartialContent(BaseModel):
     """Generic partial content wrapper."""
 
     content: str  # HTML content
-    context: Dict[str, Any] = Field(default_factory=dict)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 # Playlist Request Models
@@ -286,24 +264,26 @@ class CreatePlaylistRequest(BaseModel):
     """Request to create a new playlist."""
 
     title: str = Field(..., min_length=1, description="Playlist title")
-    category: Optional[str] = None
+    category: str | None = None
 
 
 class ReorderChaptersRequest(BaseModel):
     """Request to reorder chapters in a playlist."""
 
     playlist_id: str
-    new_order: List[int] = Field(
-        ..., description="List of chapter indices in new order"
-    )
+    new_order: list[int] = Field(..., description="List of chapter indices in new order")
 
 
 class UpdateChapterIconRequest(BaseModel):
     """Request to update chapter/track icons."""
 
     icon_id: str = Field(..., description="Icon ID to assign")
-    chapter_ids: List[int] = Field(default_factory=list, description="Indices of chapters to update")
-    track_ids: List[int] = Field(default_factory=list, description="Indices of tracks to update (future)")
+    chapter_ids: list[int] = Field(
+        default_factory=list, description="Indices of chapters to update"
+    )
+    track_ids: list[int] = Field(
+        default_factory=list, description="Indices of tracks to update (future)"
+    )
 
 
 # Playlist Response Models
@@ -339,7 +319,7 @@ class FileUploadResponse(BaseModel):
     file_id: str
     filename: str
     session_id: str
-    session: Optional[UploadSession] = None
+    session: UploadSession | None = None
 
 
 class UploadSessionStatusResponse(BaseModel):
@@ -355,7 +335,7 @@ class PlaylistUploadSessionsResponse(BaseModel):
 
     status: str
     playlist_id: str
-    sessions: List[UploadSession]
+    sessions: list[UploadSession]
     count: int
 
 
@@ -375,7 +355,7 @@ class ErrorResponse(BaseModel):
 
     error: str
     message: str
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 
 
 class SuccessResponse(BaseModel):
@@ -383,7 +363,7 @@ class SuccessResponse(BaseModel):
 
     success: bool = True
     message: str
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
 
 
 # API Service Models
@@ -393,5 +373,5 @@ class AuthStatus(BaseModel):
     """Current authentication status."""
 
     authenticated: bool
-    user_id: Optional[str] = None
-    login_url: Optional[str] = None
+    user_id: str | None = None
+    login_url: str | None = None

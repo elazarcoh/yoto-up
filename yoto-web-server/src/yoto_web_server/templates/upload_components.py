@@ -4,6 +4,7 @@ Upload-related components for HTMX-driven file uploads.
 
 from pydom import Component
 from pydom import html as d
+
 from yoto_web_server.utils.alpine import xon
 
 
@@ -39,9 +40,9 @@ class UploadModalPartial(Component):
                     d.Div(id="selection-state", classes="px-6 py-6 space-y-6")(
                         # Pending Files Section
                         d.Div(classes="space-y-3")(
-                            d.Label(
-                                classes="block text-sm font-semibold text-gray-900"
-                            )("📋 Pending Files"),
+                            d.Label(classes="block text-sm font-semibold text-gray-900")(
+                                "📋 Pending Files"
+                            ),
                             d.Div(
                                 id="pending-files-list",
                                 classes="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50",
@@ -59,9 +60,7 @@ class UploadModalPartial(Component):
                                 classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
                             )(
                                 d.Div(classes="text-3xl mb-1")("📄"),
-                                d.Div(classes="text-sm font-medium text-gray-700")(
-                                    "Select Files"
-                                ),
+                                d.Div(classes="text-sm font-medium text-gray-700")("Select Files"),
                             ),
                             d.Button(
                                 type="button",
@@ -69,9 +68,7 @@ class UploadModalPartial(Component):
                                 classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
                             )(
                                 d.Div(classes="text-3xl mb-1")("📁"),
-                                d.Div(classes="text-sm font-medium text-gray-700")(
-                                    "Select Folder"
-                                ),
+                                d.Div(classes="text-sm font-medium text-gray-700")("Select Folder"),
                             ),
                         ),
                         # Upload options
@@ -293,7 +290,7 @@ class UploadModalPartial(Component):
                         const formData = new FormData();
                         formData.append('file', file);
                         
-                        const uploadResponse = await fetch(`/playlists/${currentPlaylistId}/upload-session/${sessionId}/file`, {
+                        const uploadResponse = await fetch(`/playlists/${currentPlaylistId}/upload-session/${sessionId}/files`, {
                             method: 'POST',
                             body: formData
                         });
@@ -312,9 +309,6 @@ class UploadModalPartial(Component):
                 document.getElementById('upload-progress-bar').style.width = '100%';
                 document.getElementById('upload-status-text').textContent = 'Upload complete! Processing in background...';
                 
-                // Start background processing
-                await fetch(`/playlists/${currentPlaylistId}/upload-session/${sessionId}/process`, { method: 'POST' });
-                
                 // Close modal after delay and refresh
                 setTimeout(() => {
                     closeUploadModal();
@@ -330,9 +324,7 @@ class UploadModalPartial(Component):
         return d.Div(classes="space-y-4")(
             # Upload mode
             d.Div(classes="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200")(
-                d.Label(classes="block text-sm font-semibold text-gray-900 mb-2")(
-                    "Upload Mode"
-                ),
+                d.Label(classes="block text-sm font-semibold text-gray-900 mb-2")("Upload Mode"),
                 d.Div(classes="flex gap-4")(
                     d.Label(classes="flex items-center gap-2 cursor-pointer")(
                         d.Input(
@@ -353,9 +345,7 @@ class UploadModalPartial(Component):
                             value="tracks",
                             classes="w-4 h-4 accent-indigo-600",
                         ),
-                        d.Span(classes="text-sm text-gray-700")(
-                            "Tracks (multiple tracks)"
-                        ),
+                        d.Span(classes="text-sm text-gray-700")("Tracks (multiple tracks)"),
                     ),
                 ),
             ),
@@ -370,9 +360,7 @@ class UploadModalPartial(Component):
                         classes="w-4 h-4 accent-indigo-600",
                         onchange="document.getElementById('normalize-options').classList.toggle('hidden')",
                     ),
-                    d.Span(classes="text-sm font-semibold text-gray-900")(
-                        "Normalize Audio"
-                    ),
+                    d.Span(classes="text-sm font-semibold text-gray-900")("Normalize Audio"),
                 ),
                 d.Div(id="normalize-options", classes="hidden space-y-3 pl-6")(
                     d.Div(classes="space-y-2")(
@@ -393,9 +381,7 @@ class UploadModalPartial(Component):
                             value="true",
                             classes="w-4 h-4 accent-indigo-600",
                         ),
-                        d.Span(classes="text-sm text-gray-700")(
-                            "Batch mode (Album normalization)"
-                        ),
+                        d.Span(classes="text-sm text-gray-700")("Batch mode (Album normalization)"),
                     ),
                 ),
             ),
@@ -410,15 +396,11 @@ class UploadModalPartial(Component):
                         classes="w-4 h-4 accent-indigo-600",
                         onchange="document.getElementById('analysis-options').classList.toggle('hidden')",
                     ),
-                    d.Span(classes="text-sm font-semibold text-gray-900")(
-                        "Analyze Intro/Outro"
-                    ),
+                    d.Span(classes="text-sm font-semibold text-gray-900")("Analyze Intro/Outro"),
                 ),
                 d.Div(id="analysis-options", classes="hidden space-y-3 pl-6")(
                     d.Div(classes="space-y-2")(
-                        d.Label(classes="block text-sm text-gray-700")(
-                            "Segment Seconds"
-                        ),
+                        d.Label(classes="block text-sm text-gray-700")("Segment Seconds"),
                         d.Input(
                             type="number",
                             name="segment_seconds",
@@ -428,9 +410,7 @@ class UploadModalPartial(Component):
                         ),
                     ),
                     d.Div(classes="space-y-2")(
-                        d.Label(classes="block text-sm text-gray-700")(
-                            "Similarity Threshold"
-                        ),
+                        d.Label(classes="block text-sm text-gray-700")("Similarity Threshold"),
                         d.Input(
                             type="number",
                             name="similarity_threshold",
@@ -497,14 +477,14 @@ class ActiveUploadsSection(Component):
             id="active-uploads-container",
             classes="border-t border-gray-200 px-6 py-6 bg-gray-50",
         )(
-            d.H3(classes="text-lg font-semibold text-gray-900 mb-4")(
-                "⬆️ Active Uploads"
-            ),
+            d.H3(classes="text-lg font-semibold text-gray-900 mb-4")("⬆️ Active Uploads"),
             d.Div(id="uploads-list", classes="space-y-4"),
             # Script to manage active uploads
             d.Script()(
                 r"""//js
             // Poll for active upload sessions
+            const handledSessions = new Set();
+
             async function pollActiveUploads() {
                 try {
                     const response = await fetch(`/playlists/"""
@@ -531,6 +511,47 @@ class ActiveUploadsSection(Component):
                     console.error('Error polling uploads:', error);
                 }
             }
+
+            async function dismissSession(sessionId) {
+                try {
+                    const response = await fetch(`/playlists/"""
+                + self.playlist_id
+                + r"""/upload-session/${sessionId}`, {
+                        method: 'DELETE'
+                    });
+                    if (response.ok) {
+                        document.getElementById(`upload-${sessionId}`).remove();
+                        pollActiveUploads();
+                    }
+                } catch (error) {
+                    console.error('Error dismissing session:', error);
+                    alert('Failed to dismiss session');
+                }
+            }
+
+            async function stopSession(sessionId) {
+                if (!confirm('Stop this upload session? This will revert to the last saved state.')) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`/playlists/"""
+                + self.playlist_id
+                + r"""/upload-session/${sessionId}/stop`, {
+                        method: 'POST'
+                    });
+                    if (response.ok) {
+                        // Remove the session from UI
+                        document.getElementById(`upload-${sessionId}`).remove();
+                        pollActiveUploads();
+                    } else {
+                        alert('Failed to stop session');
+                    }
+                } catch (error) {
+                    console.error('Error stopping session:', error);
+                    alert('Failed to stop session');
+                }
+            }
             
             function updateSessionDisplay(session) {
                 let sessionEl = document.getElementById(`upload-${session.session_id}`);
@@ -541,6 +562,22 @@ class ActiveUploadsSection(Component):
                     sessionEl.id = `upload-${session.session_id}`;
                     sessionEl.className = 'border border-blue-200 rounded-lg p-4 bg-white';
                     document.getElementById('uploads-list').appendChild(sessionEl);
+                }
+
+                const isDone = session.overall_status === 'done';
+                
+                if (isDone && !handledSessions.has(session.session_id)) {
+                    handledSessions.add(session.session_id);
+                    
+                    // Check for new chapters
+                    if (session.new_chapter_ids && session.new_chapter_ids.length > 0) {
+                        const newChapters = session.new_chapter_ids.join(',');
+                        // Reload playlist detail with new chapters highlighted
+                        htmx.ajax('GET', `/playlists/${session.playlist_id}?new_chapters=${newChapters}`, {
+                            target: '#playlist-detail',
+                            swap: 'outerHTML'
+                        });
+                    }
                 }
                 
                 // Build file list with states
@@ -583,6 +620,23 @@ class ActiveUploadsSection(Component):
                 const doneFiles = session.files ? session.files.filter(f => f.status === 'completed').length : 0;
                 const progress = totalFiles > 0 ? Math.round((doneFiles / totalFiles) * 100) : 0;
                 
+                let actionButtons = '';
+                if (isDone) {
+                    actionButtons = `
+                        <button onclick="dismissSession('${session.session_id}')" 
+                                class="px-3 py-1 text-sm bg-green-600 hover:bg-green-700 text-white rounded transition-colors">
+                            Dismiss
+                        </button>
+                    `;
+                } else {
+                    actionButtons = `
+                        <button onclick="stopSession('${session.session_id}')" 
+                                class="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded transition-colors">
+                            Stop Upload
+                        </button>
+                    `;
+                }
+
                 sessionEl.innerHTML = `
                     <div class="mb-3">
                         <div class="flex justify-between items-center mb-2">
@@ -593,8 +647,11 @@ class ActiveUploadsSection(Component):
                             <div class="bg-blue-600 h-2 rounded-full transition-all" style="width: ${progress}%"></div>
                         </div>
                     </div>
-                    <div class="space-y-1 text-sm">
+                    <div class="space-y-1 text-sm mb-3">
                         ${filesHtml}
+                    </div>
+                    <div class="flex justify-end">
+                        ${actionButtons}
                     </div>
                 `;
             }
@@ -622,9 +679,7 @@ class NewPlaylistModalPartial(Component):
                 d.Div(
                     classes="px-6 py-4 border-b border-gray-200 flex justify-between items-center"
                 )(
-                    d.H3(classes="text-2xl font-bold text-gray-900")(
-                        "Create New Playlist"
-                    ),
+                    d.H3(classes="text-2xl font-bold text-gray-900")("Create New Playlist"),
                     d.Button(
                         classes="text-gray-500 hover:text-gray-700 text-2xl bg-none border-none cursor-pointer",
                         type="button",
@@ -659,9 +714,9 @@ class NewPlaylistModalPartial(Component):
                         ),
                         # Cover image section
                         d.Div(classes="flex flex-col")(
-                            d.Label(
-                                classes="block text-sm font-semibold text-gray-900 mb-2"
-                            )("Cover Image (Optional)"),
+                            d.Label(classes="block text-sm font-semibold text-gray-900 mb-2")(
+                                "Cover Image (Optional)"
+                            ),
                             # Cover preview
                             d.Div(
                                 id="cover-preview",
@@ -695,9 +750,7 @@ class NewPlaylistModalPartial(Component):
                                 **{"hx-on:change": "handleCoverFileSelected(event)"},
                             ),
                             # URL input (hidden by default)
-                            d.Div(
-                                id="cover-url-input-container", classes="hidden mt-3"
-                            )(
+                            d.Div(id="cover-url-input-container", classes="hidden mt-3")(
                                 d.Input(
                                     type="url",
                                     id="cover-url-input",
@@ -709,9 +762,7 @@ class NewPlaylistModalPartial(Component):
                         ),
                     ),
                     # Footer
-                    d.Div(
-                        classes="px-6 py-4 border-t border-gray-200 flex justify-end gap-3"
-                    )(
+                    d.Div(classes="px-6 py-4 border-t border-gray-200 flex justify-end gap-3")(
                         d.Button(
                             type="button",
                             classes="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium",
@@ -781,9 +832,7 @@ class JsonDisplayModalPartial(Component):
                         )("📋 Copy"),
                         d.Button(
                             classes="text-gray-500 hover:text-gray-700 text-2xl",
-                            **xon().click.prevent(
-                                "document.getElementById('json-modal').remove()"
-                            ),
+                            **xon().click.prevent("document.getElementById('json-modal').remove()"),
                         )("✕"),
                     ),
                 ),

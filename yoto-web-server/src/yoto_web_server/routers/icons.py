@@ -5,32 +5,68 @@ Handles lazy-loading of icon media with HTMX integration.
 Downloads icons from Yoto API on demand using the public manifest.
 """
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
-from typing import List, Literal, Optional
-from pydom import html as d
+from fastapi import APIRouter, Query, Request
+from fastapi.responses import HTMLResponse
 from loguru import logger
+from pydom import html as d
 
 from yoto_web_server.dependencies import IconServiceDep, YotoApiDep
-from yoto_web_server.templates.icon_components import (
-    IconImg,
-    LoadingIconIndicator,
-    IconGridPartial,
-)
-from yoto_web_server.templates.base import render_partial
 from yoto_web_server.services.icon_service import IconRetrieveSource
+from yoto_web_server.templates.base import render_page, render_partial
+from yoto_web_server.templates.icon_components import (
+    IconGridPartial,
+    IconImg,
+)
 
 router = APIRouter(prefix="/icons", tags=["icons"])
+
+
+@router.get("/", response_class=HTMLResponse)
+async def icons_page(
+    request: Request,
+    icon_service: IconServiceDep,
+    api_dep: YotoApiDep,
+):
+    """Render the icons page."""
+    # Default to showing official and user icons
+    sources = [IconRetrieveSource.OFFICIAL, IconRetrieveSource.USER]
+
+    icons, total = await icon_service.get_icons(
+        api_client=api_dep,
+        sources=sources,
+        page=1,
+        per_page=50,
+    )
+
+    content = d.Div(classes="space-y-6")(
+        d.H1(classes="text-2xl font-bold text-gray-900")("Icon Library"),
+        d.Div(id="icons-grid-container")(
+            IconGridPartial(
+                icons=icons,
+                title="All Icons",
+                total=total,
+                page=1,
+                per_page=50,
+                source=sources,
+            )
+        ),
+    )
+
+    return render_page(
+        title="Icons - Yoto Web Server",
+        content=content,
+        request=request,
+    )
 
 
 @router.get("/grid", response_class=HTMLResponse)
 async def get_icons_grid(
     icon_service: IconServiceDep,
     api_dep: YotoApiDep,
-    source: List[IconRetrieveSource] = Query(
+    source: list[IconRetrieveSource] = Query(
         ...,
     ),
-    query: Optional[str] = Query(None, description="Search query for titles"),
+    query: str | None = Query(None, description="Search query for titles"),
     fuzzy: bool = Query(True, description="Use fuzzy matching for titles"),
     page: int = Query(1, description="Page number (1-indexed)"),
     per_page: int = Query(50, description="Icons per page"),
@@ -55,7 +91,7 @@ async def get_icons_grid(
 
     # Determine title based on sources
     if len(source) == 1:
-        source_str = str(source[0].value if hasattr(source[0], 'value') else source[0])
+        source_str = str(source[0].value if hasattr(source[0], "value") else source[0])
         if "user" in source_str:
             title = "My Icons"
         elif "yotoicons" in source_str:
@@ -64,20 +100,22 @@ async def get_icons_grid(
             title = "Yoto Icons"
     else:
         title = "Yoto Icons"
-        
+
     if query:
         title = f"Search Results for '{query}'"
 
-    return render_partial(IconGridPartial(
-        icons=icons,
-        title=title,
-        total=total,
-        page=page,
-        per_page=per_page,
-        source=source,
-        query=query,
-        fuzzy=fuzzy,
-    ))
+    return render_partial(
+        IconGridPartial(
+            icons=icons,
+            title=title,
+            total=total,
+            page=page,
+            per_page=per_page,
+            source=source,
+            query=query,
+            fuzzy=fuzzy,
+        )
+    )
 
 
 @router.get("/{media_id}", response_class=HTMLResponse)
@@ -111,9 +149,7 @@ async def get_icon_media(
         icon_as_url = await icon_service.get_icon_by_media_id(clean_media_id, api_dep)
 
         if icon_as_url is None:
-            logger.debug(
-                f"Icon {clean_media_id} still loading, returning polling container"
-            )
+            logger.debug(f"Icon {clean_media_id} still loading, returning polling container")
             # Return a polling container - HTMX will keep polling every 2 seconds
             polling_container = d.Div(
                 id=f"icon-{clean_media_id}",

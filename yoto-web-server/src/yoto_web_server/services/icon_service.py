@@ -14,7 +14,7 @@ import time
 from asyncio import Future, Lock
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING
 
 import httpx
 from loguru import logger
@@ -23,8 +23,8 @@ from pydantic import (
 )
 from selectolax.lexbor import LexborHTMLParser
 
-from yoto_web_server.core.config import get_settings
 from yoto_web_server.api.client import YotoApiClient
+from yoto_web_server.core.config import get_settings
 from yoto_web_server.services.icon_search_service import IconSearchService, SearchSource
 from yoto_web_server.utils.sanitation import sanitize_filename
 
@@ -47,13 +47,15 @@ def icon_bytes_to_data_url(value: bytes) -> str:
     src = f"data:{mime_type};base64,{base64_data}"
     return src
 
+
 class IconRetrieveSource(str, Enum):
     OFFICIAL = "official"
     USER = "user"
     ONLINE_YOTOICONS = "yotoicons"
     CACHED_YOTOICONS = "yotoicons_cache"
-    CACHED = "cached" # any cached icons
+    CACHED = "cached"  # any cached icons
     ONLINE = "online"  # any online source
+
 
 ALL_ONLINE_SOURCES = [
     IconRetrieveSource.ONLINE_YOTOICONS,
@@ -63,10 +65,11 @@ ALL_CACHED_SOURCES = [
     IconRetrieveSource.OFFICIAL,
 ]
 
+
 class YotoIconsSearchResult(BaseModel):
     id: str
     category: str
-    tags: List[str]
+    tags: list[str]
     author: str
     downloads: int
     img_url: str
@@ -91,7 +94,7 @@ class YotoIconsSearcher:
 
     async def fetch_page_data(
         self, tag: str, page: int = 1, use_cache: bool = True
-    ) -> List[YotoIconsSearchResult]:
+    ) -> list[YotoIconsSearchResult]:
         if use_cache:
             cache_path = self._get_cache_path(tag, page)
             if cache_path.exists():
@@ -116,7 +119,7 @@ class YotoIconsSearcher:
 
         # Use selectolax for fast parsing
         parser = LexborHTMLParser(resp.text)
-        icons: List[YotoIconsSearchResult] = []
+        icons: list[YotoIconsSearchResult] = []
 
         # The data is in the 'onclick' attribute of 'div.icon'
         for node in parser.css("div.icon"):
@@ -149,16 +152,14 @@ class YotoIconsSearcher:
 
         return icons
 
-    async def search(
-        self, query: str, max_pages: int = 5
-    ) -> List[YotoIconsSearchResult]:
+    async def search(self, query: str, max_pages: int = 5) -> list[YotoIconsSearchResult]:
         """Search for icons using multiple pages in parallel."""
         import asyncio
 
         tasks = [self.fetch_page_data(query, page) for page in range(1, max_pages + 1)]
         results = await asyncio.gather(*tasks)
 
-        all_icons: List[YotoIconsSearchResult] = []
+        all_icons: list[YotoIconsSearchResult] = []
         seen_ids = set()
         for page_icons in results:
             for icon in page_icons:
@@ -178,13 +179,13 @@ class IconEntry(BaseModel):
     source: str
     name: str
     data: str
-    tags: List[str] = []
-    keywords: List[str] = []
+    tags: list[str] = []
+    keywords: list[str] = []
 
 
 class IconIndex:
     def __init__(self) -> None:
-        self._items: Dict[str, IconEntry] = {}
+        self._items: dict[str, IconEntry] = {}
 
     @property
     def built(self) -> bool:
@@ -207,16 +208,15 @@ class IconIndex:
         for path in directory.glob("*.json"):
             self.add_from_path(path, source)
 
-    def get(self, icon_id: str) -> Optional[IconEntry]:
+    def get(self, icon_id: str) -> IconEntry | None:
         entry = self._items.get(icon_id)
         return entry
 
-    def all_entries(self) -> List[IconEntry]:
+    def all_entries(self) -> list[IconEntry]:
         return list(self._items.values())
 
 
 class IconIndices:
-
     def __init__(self) -> None:
         self.official = IconIndex()
         self.yotoicons = IconIndex()
@@ -235,10 +235,10 @@ class IconIndices:
         self.official.clear()
         self.yotoicons.clear()
 
-    def all_entries(self) -> List[IconEntry]:
+    def all_entries(self) -> list[IconEntry]:
         return self.official.all_entries() + self.yotoicons.all_entries()
 
-    def get(self, icon_id: str) -> Optional[IconEntry]:
+    def get(self, icon_id: str) -> IconEntry | None:
         for idx in (self.official, self.yotoicons):
             v = idx.get(icon_id)
             if v:
@@ -272,24 +272,24 @@ class IconService:
         self._indices = IconIndices()
 
         # In-memory manifest of public icons
-        self._public_manifest: Optional[DisplayIconManifest] = None
-        self._public_manifest_by_media_id: Dict[str, DisplayIcon] = {}
+        self._public_manifest: DisplayIconManifest | None = None
+        self._public_manifest_by_media_id: dict[str, DisplayIcon] = {}
         # In-memory manifest of user icons
-        self._user_manifest: Optional[DisplayIconManifest] = None
-        self._user_manifest_by_media_id: Dict[str, DisplayIcon] = {}
+        self._user_manifest: DisplayIconManifest | None = None
+        self._user_manifest_by_media_id: dict[str, DisplayIcon] = {}
 
         # In-memory tracking of ongoing download requests
-        self._running_requests: Dict[str, Future] = {}
+        self._running_requests: dict[str, Future] = {}
         self._running_requests_lock = Lock()
 
         # In-memory cache for downloaded/loaded icons (bytes)
-        self._icon_cache: Dict[str, str] = {}
+        self._icon_cache: dict[str, str] = {}
 
         # YotoIcons caching and provisioning mapping
-        self._yotoicons_to_official_mapping: Dict[str, str] = {}
+        self._yotoicons_to_official_mapping: dict[str, str] = {}
 
         # Search service (initialized after manifests are loaded)
-        self._search_service: Optional[IconSearchService] = None
+        self._search_service: IconSearchService | None = None
 
     async def initialize(self) -> None:
         """Initialize the service (public manifest will be fetched on demand with auth)."""
@@ -343,9 +343,7 @@ class IconService:
                 icon.mediaId: icon for icon in self._public_manifest.displayIcons
             }
 
-            logger.info(
-                f"Loaded public manifest: {len(self._public_manifest.displayIcons)} icons"
-            )
+            logger.info(f"Loaded public manifest: {len(self._public_manifest.displayIcons)} icons")
             return True
 
         except Exception as e:
@@ -378,9 +376,7 @@ class IconService:
                 icon.mediaId: icon for icon in self._user_manifest.displayIcons
             }
 
-            logger.info(
-                f"Loaded user manifest: {len(self._user_manifest.displayIcons)} icons"
-            )
+            logger.info(f"Loaded user manifest: {len(self._user_manifest.displayIcons)} icons")
             return True
 
         except Exception as e:
@@ -398,14 +394,14 @@ class IconService:
 
     # ========== Cache Helper Methods ==========
 
-    def _get_from_memory_cache(self, media_id: str) -> Optional[str]:
+    def _get_from_memory_cache(self, media_id: str) -> str | None:
         """Check if icon exists in memory cache."""
         if media_id in self._icon_cache:
             logger.debug(f"Icon {media_id} found in memory cache")
             return self._icon_cache[media_id]
         return None
 
-    def _get_from_disk_cache(self, media_id: str) -> Optional[str]:
+    def _get_from_disk_cache(self, media_id: str) -> str | None:
         """Check if icon exists in disk indices and load into memory."""
         entry = self._indices.get(media_id)
         if entry:
@@ -444,10 +440,10 @@ class IconService:
 
     # ========== Icon Type-Specific Methods ==========
 
-    async def _get_yotoicons_icon(self, media_id: str) -> Optional[str]:
+    async def _get_yotoicons_icon(self, media_id: str) -> str | None:
         """
         Retrieve a YotoIcons icon (yotoicons:*).
-        
+
         Flow: Memory cache → Disk cache → Search service cache → Download from yotoicons.com
         """
         # Check memory cache
@@ -479,12 +475,10 @@ class IconService:
             logger.error(f"Error downloading YotoIcon {media_id}: {e}")
             return None
 
-    async def _get_official_icon(
-        self, media_id: str, api_client: YotoApiClient
-    ) -> Optional[str]:
+    async def _get_official_icon(self, media_id: str, api_client: YotoApiClient) -> str | None:
         """
         Retrieve an official Yoto icon (from user or public manifest).
-        
+
         Flow: Memory cache → Disk cache → User manifest → Public manifest → Download
         Includes concurrent request deduplication.
         """
@@ -506,7 +500,7 @@ class IconService:
         await self._ensure_user_icon_manifest(api_client)
 
         # Find icon in manifests
-        icon_def: Optional[DisplayIcon] = None
+        icon_def: DisplayIcon | None = None
         source: str = ""
 
         if normalized_id in self._user_manifest_by_media_id:
@@ -530,10 +524,10 @@ class IconService:
         icon_def: DisplayIcon,
         target_dir: Path,
         source: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Download icon with concurrent request deduplication.
-        
+
         If another request is already downloading the same URL, wait for it.
         Otherwise, download and notify other waiting requests.
         """
@@ -580,7 +574,7 @@ class IconService:
         self,
         media_id: str,
         api_client: YotoApiClient,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get icon by media ID from the public manifest or yotoicons.com.
 
@@ -605,9 +599,7 @@ class IconService:
         if self._search_service is not None:
             return  # Already initialized
 
-        official_icons = (
-            self._public_manifest.displayIcons if self._public_manifest else []
-        )
+        official_icons = self._public_manifest.displayIcons if self._public_manifest else []
         self._search_service = IconSearchService(
             official_manifest=official_icons,
             yotoicons_cache_dir=self._yotoicons_dir,
@@ -617,12 +609,12 @@ class IconService:
     async def get_icons(
         self,
         api_client: YotoApiClient,
-        sources: List[IconRetrieveSource],
-        query: Optional[str] = None,
+        sources: list[IconRetrieveSource],
+        query: str | None = None,
         fuzzy: bool = True,
         page: int = 1,
         per_page: int = 50,
-    ) -> tuple[List[DisplayIcon], int]:
+    ) -> tuple[list[DisplayIcon], int]:
         """
         Get a list of icons with advanced search and pagination.
 
@@ -633,7 +625,7 @@ class IconService:
             fuzzy: Use fuzzy matching on titles
             page: Page number (1-indexed)
             per_page: Results per page
-            
+
         Returns:
             Tuple of (list of icons for this page, total count)
         """
@@ -670,7 +662,7 @@ class IconService:
         # Use search service for official and yotoicons_cache
         if IconRetrieveSource.CACHED in sources:
             sources = ALL_CACHED_SOURCES
-        search_sources: List[SearchSource] = []
+        search_sources: list[SearchSource] = []
         if IconRetrieveSource.OFFICIAL in sources:
             search_sources.append(SearchSource.OFFICIAL)
         if IconRetrieveSource.CACHED_YOTOICONS in sources:
@@ -678,7 +670,7 @@ class IconService:
 
         if not search_sources:
             return [], 0
-        
+
         # Perform search with pagination
         icons, total = self._search_service.search(
             query=query,
@@ -690,19 +682,24 @@ class IconService:
 
         return icons, total
 
-    async def search_online(self, query: str, online_sources: List[IconRetrieveSource]) -> List[DisplayIcon]:
+    async def search_online(
+        self, query: str, online_sources: list[IconRetrieveSource]
+    ) -> list[DisplayIcon]:
         """Search yotoicons.com online and return DisplayIcon objects."""
-        results: List[DisplayIcon] = []
+        results: list[DisplayIcon] = []
 
-        if IconRetrieveSource.ONLINE_YOTOICONS in online_sources or IconRetrieveSource.ONLINE in online_sources:
+        if (
+            IconRetrieveSource.ONLINE_YOTOICONS in online_sources
+            or IconRetrieveSource.ONLINE in online_sources
+        ):
             online_results = await self._search_yotoicons_online(query)
             results.extend(online_results)
-        
+
         # TODO: Sort results by relevance if needed
 
         return results
 
-    async def _search_yotoicons_online(self, query: str) -> List[DisplayIcon]:
+    async def _search_yotoicons_online(self, query: str) -> list[DisplayIcon]:
         from yoto_web_server.api.models import DisplayIcon
 
         searcher = YotoIconsSearcher(self._yotoicons_search_cache_dir)
@@ -747,9 +744,7 @@ class IconService:
             return media_id.removeprefix("yoto:#")
         return media_id
 
-    async def _provision_yotoicon_id(
-        self, icon_id: str, api_client: YotoApiClient
-    ) -> Optional[str]:
+    async def _provision_yotoicon_id(self, icon_id: str, api_client: YotoApiClient) -> str | None:
         """
         Download a YotoIcon and upload it to Yoto API.
         Returns the official mediaId.
@@ -775,9 +770,7 @@ class IconService:
 
                 logger.debug(f"Downloaded {yotoicons_id}: {len(icon_bytes)} bytes")
             except httpx.HTTPError as download_err:
-                logger.error(
-                    f"Failed to download icon from {url}: {download_err}", exc_info=True
-                )
+                logger.error(f"Failed to download icon from {url}: {download_err}", exc_info=True)
                 raise
 
             # 2. Upload to Yoto
@@ -789,23 +782,29 @@ class IconService:
 
                 logger.debug(f"Upload response received: {upload_resp!r}")
                 official_media_id = upload_resp.mediaId
-                logger.debug(f"Upload response mediaId: {official_media_id!r} (type: {type(official_media_id).__name__}, length: {len(official_media_id) if official_media_id else 'N/A'})")
-                
+                logger.debug(
+                    f"Upload response mediaId: {official_media_id!r} (type: {type(official_media_id).__name__}, length: {len(official_media_id) if official_media_id else 'N/A'})"
+                )
+
                 if not official_media_id:
                     logger.error("Upload returned empty mediaId")
                     raise ValueError("Upload returned empty mediaId")
-                
+
                 # Ensure the ID is clean (without yoto:# prefix)
                 # The API may return either "yoto:#xxx" or just "xxx"
                 if official_media_id.startswith("yoto:#"):
                     logger.debug("Stripping yoto:# prefix from mediaId")
                     official_media_id = official_media_id.removeprefix("yoto:#")
-                
+
                 # Validate ID format (should be 43 characters)
                 if len(official_media_id) != 43:
-                    logger.error(f"Unexpected mediaId length: {len(official_media_id)} chars (expected 43): {official_media_id!r}")
-                    raise ValueError(f"Invalid mediaId format from API: expected 43 chars, got {len(official_media_id)}")
-                
+                    logger.error(
+                        f"Unexpected mediaId length: {len(official_media_id)} chars (expected 43): {official_media_id!r}"
+                    )
+                    raise ValueError(
+                        f"Invalid mediaId format from API: expected 43 chars, got {len(official_media_id)}"
+                    )
+
                 logger.info(f"Successfully uploaded to Yoto: {official_media_id}")
 
                 # 3. Store mapping
@@ -821,9 +820,7 @@ class IconService:
                 logger.info(f"Provisioning complete: {icon_id} -> {official_media_id}")
                 return official_media_id
             except Exception as upload_err:
-                logger.error(
-                    f"Failed to upload icon to Yoto: {upload_err}", exc_info=True
-                )
+                logger.error(f"Failed to upload icon to Yoto: {upload_err}", exc_info=True)
                 raise
 
         except Exception as e:
@@ -861,109 +858,3 @@ class IconService:
             logger.debug(f"Saved icon {media_id} to {file_path}")
         except Exception as e:
             logger.error(f"Failed to save icon {media_id} to disk: {e}")
-
-    async def initialize(self) -> None:
-        """Initialize the icon service by fetching the public manifest."""
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    "https://api.yotoplay.com/media/displayIcons/user/yoto"
-                )
-                response.raise_for_status()
-                self._public_icons = DisplayIconManifest.model_validate(response.json())
-                logger.info(f"Loaded {len(self._public_icons.displayIcons)} public icons")
-        except Exception as e:
-            logger.error(f"Failed to fetch public icons: {e}")
-            self._public_icons = DisplayIconManifest(displayIcons=[])
-
-    def get_public_icons(self) -> list[DisplayIcon]:
-        """Get list of public icons."""
-        if self._public_icons is None:
-            return []
-        return self._public_icons.displayIcons
-
-    def search_icons(
-        self,
-        query: str,
-        limit: int = 50,
-    ) -> list[DisplayIcon]:
-        """
-        Search icons by query.
-
-        Args:
-            query: Search query
-            limit: Maximum results to return
-
-        Returns:
-            List of matching icons
-        """
-        if self._public_icons is None:
-            return []
-
-        query_lower = query.lower()
-        results: list[tuple[int, DisplayIcon]] = []
-
-        for icon in self._public_icons.displayIcons:
-            score = 0
-
-            # Check title
-            if icon.title and query_lower in icon.title.lower():
-                score += 10
-
-            # Check tags
-            if icon.publicTags:
-                for tag in icon.publicTags:
-                    if query_lower in tag.lower():
-                        score += 5
-                        break
-
-            if score > 0:
-                results.append((score, icon))
-
-        # Sort by score (descending) and return top results
-        results.sort(key=lambda x: x[0], reverse=True)
-        return [icon for _, icon in results[:limit]]
-
-    async def get_icon_data(self, icon_url: str) -> Optional[bytes]:
-        """
-        Fetch icon data from URL.
-
-        Args:
-            icon_url: URL of the icon
-
-        Returns:
-            Icon bytes or None if failed
-        """
-        # Check cache
-        if icon_url in self._icon_cache:
-            return self._icon_cache[icon_url]
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(icon_url)
-                response.raise_for_status()
-                data = response.content
-                self._icon_cache[icon_url] = data
-                return data
-        except Exception as e:
-            logger.error(f"Failed to fetch icon: {e}")
-            return None
-
-    def get_icon_by_id(self, icon_id: str) -> Optional[DisplayIcon]:
-        """
-        Get icon by its ID.
-
-        Args:
-            icon_id: Display icon ID
-
-        Returns:
-            DisplayIcon or None if not found
-        """
-        if self._public_icons is None:
-            return None
-
-        for icon in self._public_icons.displayIcons:
-            if icon.displayIconId == icon_id:
-                return icon
-
-        return None

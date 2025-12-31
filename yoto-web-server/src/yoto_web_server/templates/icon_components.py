@@ -8,7 +8,7 @@ import json
 from pydom import Component
 from pydom import html as d
 
-from yoto_web_server.models import DisplayIcon
+from yoto_web_server.api.models import DisplayIcon
 
 
 class PaginationControls(Component):
@@ -40,7 +40,7 @@ class PaginationControls(Component):
         params = []
         for s in self.source:
             # Handle both enum and string values
-            if hasattr(s, 'value'):
+            if hasattr(s, "value"):
                 source_val: str = s.value  # type: ignore
             else:
                 source_val = str(s)
@@ -65,7 +65,7 @@ class PaginationControls(Component):
 
         # Build pagination buttons - only include HTMX attrs if enabled
         buttons = []
-        
+
         # Previous button
         if has_prev:
             buttons.append(
@@ -113,9 +113,9 @@ class PaginationControls(Component):
                 )("Next →")
             )
 
-        return d.Div(classes="col-span-4 flex items-center justify-center gap-3 mt-6 pt-6 border-t border-gray-200")(
-            *buttons
-        )
+        return d.Div(
+            classes="col-span-4 flex items-center justify-center gap-3 mt-6 pt-6 border-t border-gray-200"
+        )(*buttons)
 
 
 class IconGridPartial(Component):
@@ -147,17 +147,19 @@ class IconGridPartial(Component):
 
     def _get_target_id(self) -> str:
         """Determine the target ID based on source."""
-        source_list = self.source if isinstance(self.source, list) else [self.source] if self.source else []
+        source_list = (
+            self.source if isinstance(self.source, list) else [self.source] if self.source else []
+        )
         if not source_list:
             return "official-icons-section"
-        
+
         # Get string representation of first source
         first_source = source_list[0]
-        if hasattr(first_source, 'value'):
+        if hasattr(first_source, "value"):
             source_str = str(first_source.value).lower()  # type: ignore
         else:
             source_str = str(first_source).lower()
-        
+
         if "user" in source_str:
             return "user-icons-section"
         elif any(x in source_str for x in ["yotoicons", "online", "cached"]):
@@ -167,15 +169,17 @@ class IconGridPartial(Component):
 
     def render(self):
         if not self.icons:
-            return d.Div(classes="col-span-4 p-4 text-center text-gray-500")(
-                "No icons found"
-            )
+            return d.Div(classes="col-span-4 p-4 text-center text-gray-500")("No icons found")
 
         # Convert source to string list if needed
-        source_list = self.source if isinstance(self.source, list) else [self.source] if self.source else []
+        source_list = (
+            self.source if isinstance(self.source, list) else [self.source] if self.source else []
+        )
 
         # Build title with icon count
-        title_text = f"{self.title} ({self.total})" if self.total else f"{self.title} ({len(self.icons)})"
+        title_text = (
+            f"{self.title} ({self.total})" if self.total else f"{self.title} ({len(self.icons)})"
+        )
 
         # Build content
         content = [
@@ -184,7 +188,7 @@ class IconGridPartial(Component):
             ),
             *[self._render_icon(icon) for icon in self.icons],
         ]
-        
+
         # Add pagination controls if we have total info and multiple pages
         if self.total > 0:
             pagination = PaginationControls(
@@ -242,10 +246,12 @@ class IconSidebarPartial(Component):
             hx_post=f"/playlists/{self.playlist_id}/update-items-icon",
             hx_target="#playlist-detail",
             hx_swap="outerHTML",
-            hx_vals=json.dumps({
-                "chapter_ids": self.chapter_ids,
-                "track_ids": self.track_ids,
-            }),
+            hx_vals=json.dumps(
+                {
+                    "chapter_ids": self.chapter_ids,
+                    "track_ids": self.track_ids,
+                }
+            ),
             classes="fixed right-0 top-0 h-screen w-96 bg-white shadow-2xl z-50 overflow-y-auto flex flex-col",
         )(
             # Header
@@ -290,9 +296,13 @@ class IconSidebarPartial(Component):
                         )("Search Online"),
                     ),
                     d.Div(classes="flex justify-between text-xs text-gray-500")(
-                        d.Span(id="search-indicator", classes="htmx-indicator")("Searching cached..."),
-                        d.Span(id="yotoicons-indicator", classes="htmx-indicator")("Searching YotoIcons.com..."),
-                    )
+                        d.Span(id="search-indicator", classes="htmx-indicator")(
+                            "Searching cached..."
+                        ),
+                        d.Span(id="yotoicons-indicator", classes="htmx-indicator")(
+                            "Searching YotoIcons.com..."
+                        ),
+                    ),
                 ),
             ),
             # Content area with scrollable grids
@@ -302,7 +312,6 @@ class IconSidebarPartial(Component):
                     id="yotoicons-section",
                     classes="grid grid-cols-4 gap-3 empty:hidden",
                 )(),
-                
                 # User icons grid
                 d.Div(
                     id="user-icons-section",
@@ -312,7 +321,6 @@ class IconSidebarPartial(Component):
                     hx_swap="innerHTML",
                     classes="grid grid-cols-4 gap-3",
                 )(),
-                
                 # Official icons grid - also acts as local search results container
                 d.Div(
                     id="official-icons-section",

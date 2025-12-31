@@ -23,7 +23,10 @@ from yoto_web_server.templates.htmx_helpers import (
     ToastNotificationSystem,
     ToggleClassScript,
 )
-from yoto_web_server.templates.playlist_components import ChapterItem as ChapterItemComponent, TrackItem
+from yoto_web_server.templates.playlist_components import (
+    ChapterItem as ChapterItemComponent,
+    TrackItem,
+)
 from yoto_web_server.templates.icon_components import (
     IconGridPartial,
     IconImg,
@@ -49,7 +52,7 @@ from yoto_web_server.templates.device_detail import (
     SettingsPanel,
     StatusMetric,
 )
-from yoto_web_server.templates.playlist_detail_refactored import (
+from yoto_web_server.templates.playlist_detail import (
     EditControlsPartial,
     PlaylistDetailRefactored,
 )

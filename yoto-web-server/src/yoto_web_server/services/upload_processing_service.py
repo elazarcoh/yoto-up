@@ -10,17 +10,19 @@ import queue
 import threading
 import time
 from concurrent.futures import (
-    ThreadPoolExecutor,
-    as_completed,
     Future as ConcurrentFuture,
 )
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+)
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from yoto_web_server.api.models import Chapter, Track, CardContent
-from yoto_web_server.api.client import TranscodedAudioResponse, YotoApiClient
+from yoto_web_server.api.client import YotoApiClient
+from yoto_web_server.api.models import CardContent, Chapter, Track, TranscodedAudioResponse
 from yoto_web_server.models import (
     UploadFileStatus,
     UploadMode,
@@ -50,12 +52,10 @@ class UploadProcessingService:
         self._upload_session_service = upload_session_service
         self._session_aware_api_service = session_aware_api_service
 
-        self._queue: queue.Queue[Tuple[str, str]] = queue.Queue()
+        self._queue: queue.Queue[tuple[str, str]] = queue.Queue()
         self._stop_event = threading.Event()
-        self._worker_thread: Optional[threading.Thread] = None
-        self._thread_pool = ThreadPoolExecutor(
-            max_workers=4, thread_name_prefix="UploadWorker"
-        )
+        self._worker_thread: threading.Thread | None = None
+        self._thread_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="UploadWorker")
         # Track sessions that should be stopped
         self._sessions_to_stop: set[str] = set()
         self._stop_lock = threading.Lock()
@@ -159,9 +159,7 @@ class UploadProcessingService:
         if session.normalize and session.normalize_batch:
             try:
                 # run in pool
-                future = self._thread_pool.submit(
-                    self._perform_batch_normalization, session
-                )
+                future = self._thread_pool.submit(self._perform_batch_normalization, session)
                 # wait for completion without blocking other tasks
                 future.result()
             except Exception as e:
@@ -170,9 +168,9 @@ class UploadProcessingService:
                 return
 
         # 2. Parallel Processing (Analysis + Upload)
-        futures: Dict[ConcurrentFuture[Optional[Track]], str] = {}
+        futures: dict[ConcurrentFuture[Track | None], str] = {}
         # Map file_id to Track for preserving order later
-        processed_tracks: Dict[str, Track] = {}
+        processed_tracks: dict[str, Track] = {}
 
         for file_status in session.files:
             if file_status.temp_path:
@@ -193,9 +191,7 @@ class UploadProcessingService:
                     processed_tracks[file_id] = track
             except Exception as e:
                 logger.error(f"File processing failed for {file_id}: {e}")
-                self._upload_session_service.mark_file_error(
-                    session_id, file_id, str(e)
-                )
+                self._upload_session_service.mark_file_error(session_id, file_id, str(e))
 
         # 3. Update Playlist
         # Reconstruct ordered list of tracks
@@ -206,7 +202,13 @@ class UploadProcessingService:
 
         if ordered_tracks:
             try:
-                self._update_playlist(playlist_id, ordered_tracks, session.upload_mode, session_id)
+                new_indices = self._update_playlist(
+                    playlist_id, ordered_tracks, session.upload_mode, session_id
+                )
+                # Convert indices to strings
+                new_ids = [str(idx) for idx in new_indices]
+                self._upload_session_service.update_new_chapter_ids(session_id, new_ids)
+
                 logger.info(
                     f"Successfully updated playlist {playlist_id} with {len(ordered_tracks)} tracks"
                 )
@@ -254,7 +256,7 @@ class UploadProcessingService:
 
     def _process_file_pipeline(
         self, session_id: str, file_status: UploadFileStatus, session: UploadSession
-    ) -> Optional[Track]:
+    ) -> Track | None:
         """
         Process a single file: Analyze -> Upload -> Create Track.
         Runs in thread pool.
@@ -365,15 +367,17 @@ class UploadProcessingService:
         async def _do_upload(access_token: str) -> TranscodedAudioResponse:
             # Create a fresh API client in this thread's event loop
             # This avoids the issue of the client being bound to the main Uvicorn event loop
+            from yoto_web_server.api.config import YotoApiConfig
+            from yoto_web_server.api.models import TokenData
             from yoto_web_server.core.config import get_settings
-            from yoto_web_server.api.client import YotoApiConfig, TokenData
-            
+
             settings = get_settings()
             config = YotoApiConfig(client_id=settings.yoto_client_id)
             api = YotoApiClient(config=config)
-            
+
             # Set the access token for this client
             import time
+
             api.auth._token_data = TokenData(
                 access_token=access_token,
                 refresh_token=None,
@@ -393,9 +397,7 @@ class UploadProcessingService:
 
             # 4. Poll for transcoding
             # We disable API-side loudnorm because we handle it locally if requested
-            transcoded = await api.poll_for_transcoding(
-                upload.upload_id, loudnorm=False
-            )
+            transcoded = await api.poll_for_transcoding(upload.upload_id, loudnorm=False)
 
             return transcoded
 
@@ -418,8 +420,8 @@ class UploadProcessingService:
         return asyncio.run(_do_upload(session_data.access_token))
 
     def _update_playlist(
-        self, playlist_id: str, new_tracks: List[Track], upload_mode: UploadMode, session_id: str
-    ) -> None:
+        self, playlist_id: str, new_tracks: list[Track], upload_mode: UploadMode, session_id: str
+    ) -> list[int]:
         """Update playlist with new tracks/chapters.
 
         Args:
@@ -427,20 +429,25 @@ class UploadProcessingService:
             new_tracks: List of Track objects to add
             upload_mode: Mode for upload ('chapters' or 'tracks')
             session_id: Current upload session ID
+
+        Returns:
+            List of indices of the newly added chapters
         """
 
-        async def _do_update(access_token: str) -> None:
+        async def _do_update(access_token: str) -> list[int]:
             # Create a fresh API client in this thread's event loop
             # This avoids the issue of the client being bound to the main Uvicorn event loop
+            from yoto_web_server.api.config import YotoApiConfig
+            from yoto_web_server.api.models import TokenData
             from yoto_web_server.core.config import get_settings
-            from yoto_web_server.api.client import YotoApiConfig, TokenData
-            
+
             settings = get_settings()
             config = YotoApiConfig(client_id=settings.yoto_client_id)
             api = YotoApiClient(config=config)
-            
+
             # Set the access token for this client
             import time
+
             api.auth._token_data = TokenData(
                 access_token=access_token,
                 refresh_token=None,
@@ -454,18 +461,30 @@ class UploadProcessingService:
             if card.content.chapters is None:
                 card.content.chapters = []
 
+            original_chapter_count = len(card.content.chapters)
+            new_chapter_indices = []
+
             if upload_mode == "chapters":
                 # Create a chapter for each track
                 chapter_key = 0
                 existing_keys = {chapter.key for chapter in card.content.chapters}
                 while str(chapter_key) in existing_keys:
                     chapter_key += 1
+
                 for key, track in enumerate(new_tracks):
                     track.key = str(key)
-                    chapter = Chapter(
-                        title=track.title, tracks=[track], key=str(chapter_key)
-                    )
+                    # Find next available chapter key
+                    while str(chapter_key) in existing_keys:
+                        chapter_key += 1
+
+                    chapter = Chapter(title=track.title, tracks=[track], key=str(chapter_key))
                     card.content.chapters.append(chapter)
+                    existing_keys.add(str(chapter_key))
+
+                # All appended chapters are new
+                new_chapter_indices = list(
+                    range(original_chapter_count, len(card.content.chapters))
+                )
 
             elif upload_mode == "tracks":
                 # Add all tracks to a new chapter
@@ -483,8 +502,10 @@ class UploadProcessingService:
                     key=str(key),
                 )
                 card.content.chapters.append(chapter)
+                new_chapter_indices = [len(card.content.chapters) - 1]
 
             await api.update_card(card)
+            return new_chapter_indices
 
         # Get the upload session to get the access token
         upload_session = self._upload_session_service.get_session(session_id)
@@ -502,7 +523,7 @@ class UploadProcessingService:
             raise ValueError(f"User session {upload_session.user_session_id} not found")
 
         # Run async code in a new event loop with a fresh API client
-        asyncio.run(_do_update(session_data.access_token))
+        return asyncio.run(_do_update(session_data.access_token))
 
     def _mark_session_error(self, session_id: str, error_message: str) -> None:
         """

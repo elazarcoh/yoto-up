@@ -2,13 +2,13 @@
 Alarm management components for device configuration.
 """
 
-from datetime import time as dt_time
 import json
-from typing import Optional
+
 from pydom import Component
 from pydom import html as d
-from yoto_web_server.api.client import ConfigAlarms, Day, DAYS
-from yoto_web_server.utils.alpine import xdata, xtext, xmodel
+
+from yoto_web_server.api.models import DAYS, ConfigAlarms
+from yoto_web_server.utils.alpine import xdata, xmodel, xtext
 
 
 class AlarmCard(Component):
@@ -28,9 +28,7 @@ class AlarmCard(Component):
         self.just_saved = just_saved
 
     def render(self):
-        days_str = ", ".join(
-            [day.title() for day in DAYS if self.alarm.weekdays.get(day, False)]
-        )
+        days_str = ", ".join([day.title() for day in DAYS if self.alarm.weekdays.get(day, False)])
         time_str = self.alarm.time.strftime("%H:%M")
         volume_str = (
             str(self.alarm.volume_level)
@@ -122,12 +120,8 @@ class AlarmCard(Component):
                             d.Input(
                                 type="checkbox",
                                 name=day,
-                                hx_vals=json.dumps(
-                                    {day: not self.alarm.weekdays.get(day, False)}
-                                ),
-                                checked="checked"
-                                if self.alarm.weekdays.get(day, False)
-                                else None,
+                                hx_vals=json.dumps({day: not self.alarm.weekdays.get(day, False)}),
+                                checked="checked" if self.alarm.weekdays.get(day, False) else None,
                                 classes="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500",
                                 hx_patch=f"/devices/{self.device_id}/alarms/{self.alarm_index}",
                             ),

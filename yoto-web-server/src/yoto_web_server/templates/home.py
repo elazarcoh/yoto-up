@@ -24,7 +24,7 @@ class UnauthenticatedHome(Component):
     def render(self):
         return d.Div()(
             d.Section(classes="text-center py-20")(
-                d.H1(classes="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl")("Welcome to Yoto Web Server"),
+                d.H1(classes="text-4xl font-extrabold text-gray-900 sm:text-5xl sm:tracking-tight lg:text-6xl")("Welcome to Yoto Up"),
                 d.P(classes="mt-5 max-w-xl mx-auto text-xl text-gray-500")(
                     "Manage your Yoto cards, upload audio content, and customize icons - all from your browser."
                 ),

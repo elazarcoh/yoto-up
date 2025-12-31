@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -34,11 +35,8 @@ from yoto_web_server.api.exceptions import (
 from yoto_web_server.api.models import (
     AudioUploadUrlResponse,
     Card,
-    ConfigAlarms,
     CoverImageUploadResponse,
     CoverType,
-    Day,
-    DAYS,
     Device,
     DeviceConfig,
     DeviceStatus,
@@ -80,7 +78,7 @@ class YotoApiClient:
     def __init__(
         self,
         config: YotoApiConfig,
-        http_client: Optional[httpx.AsyncClient] = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         """
         Initialize Yoto API client.
@@ -119,15 +117,15 @@ class YotoApiClient:
             self._http_client = None
         await self.auth.close()
 
-    async def __aenter__(self) -> "YotoApiClient":
+    async def __aenter__(self) -> YotoApiClient:
         await self.initialize()
         return self
 
     async def __aexit__(
         self,
-        exc_type: Optional[type],
-        exc_val: Optional[BaseException],
-        exc_tb: Optional[Any],
+        exc_type: type | None,
+        exc_val: BaseException | None,
+        exc_tb: Any | None,
     ) -> None:
         await self.close()
 
@@ -160,12 +158,12 @@ class YotoApiClient:
         method: str,
         path: str,
         *,
-        params: Optional[dict[str, Any]] = None,
-        json: Optional[dict[str, Any]] = None,
-        data: Optional[dict[str, Any]] = None,
-        content: Optional[bytes] = None,
-        files: Optional[dict[str, Any]] = None,
-        headers: Optional[dict[str, str]] = None,
+        params: dict[str, Any] | None = None,
+        json: dict[str, Any] | None = None,
+        data: dict[str, Any] | None = None,
+        content: bytes | None = None,
+        files: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
         require_auth: bool = True,
         retry_count: int = 0,
     ) -> httpx.Response:
@@ -254,8 +252,8 @@ class YotoApiClient:
                         require_auth=require_auth,
                         retry_count=retry_count + 1,
                     )
-                except YotoAuthError:
-                    pass  # Fall through to raise original error
+                except YotoAuthError as auth_error:
+                    raise auth_error  # Re-raise to trigger login redirect
 
             # Handle rate limiting
             if e.response.status_code == 429:
@@ -307,7 +305,7 @@ class YotoApiClient:
 
     async def authenticate(
         self,
-        callback: Optional[Callable[[str, str], None]] = None,
+        callback: Callable[[str, str], None] | None = None,
         timeout: int = 300,
     ) -> None:
         """
@@ -449,7 +447,7 @@ class YotoApiClient:
     async def get_audio_upload_url(
         self,
         sha256: str,
-        filename: Optional[str] = None,
+        filename: str | None = None,
     ) -> AudioUploadUrlResponse:
         """
         Get signed upload URL for audio file.
@@ -500,7 +498,7 @@ class YotoApiClient:
         loudnorm: bool = False,
         poll_interval: float = 2.0,
         max_attempts: int = 120,
-        callback: Optional[Callable[[int, int], None]] = None,
+        callback: Callable[[int, int], None] | None = None,
     ) -> TranscodedAudioResponse:
         """
         Poll for audio transcoding completion.
@@ -539,11 +537,11 @@ class YotoApiClient:
 
     async def upload_cover_image(
         self,
-        image_path: Optional[Path] = None,
-        image_url: Optional[str] = None,
-        image_data: Optional[bytes] = None,
+        image_path: Path | None = None,
+        image_url: str | None = None,
+        image_data: bytes | None = None,
         autoconvert: bool = True,
-        cover_type: Optional[CoverType] = None,
+        cover_type: CoverType | None = None,
     ) -> CoverImageUploadResponse:
         """
         Upload cover image.
@@ -561,31 +559,37 @@ class YotoApiClient:
         if not image_path and not image_url and not image_data:
             raise YotoValidationError("Either image_path, image_url, or image_data required")
 
-        data: dict[str, str] = {}
+        params: dict[str, str] = {}
         if autoconvert:
-            data["autoconvert"] = "true"
+            params["autoconvert"] = "true"
         if cover_type:
-            data["coverType"] = cover_type.value
+            params["coverType"] = cover_type.value
         if image_url:
-            data["imageUrl"] = image_url
+            params["imageUrl"] = image_url
 
-        files = None
+        content = None
+        headers = {}
+
         if image_path:
-            files = {"image": (image_path.name, image_path.open("rb"), "image/jpeg")}
+            content = image_path.read_bytes()
+            headers["Content-Type"] = "image/jpeg"  # Assuming JPEG as per docs
         elif image_data:
-            files = {"image": ("cover.jpg", image_data, "image/jpeg")}
+            content = image_data
+            headers["Content-Type"] = "image/jpeg"
 
-        try:
-            response = await self._request(
-                "POST",
-                "/media/image/cover",
-                data=data,
-                files=files,
-            )
-            return CoverImageUploadResponse.model_validate(response.json())
-        finally:
-            if files and hasattr(files["image"][1], "close"):
-                files["image"][1].close()
+        # If image_url is provided, we don't send body content, just the param
+        if image_url:
+            content = None
+            headers = {}
+
+        response = await self._request(
+            "POST",
+            "/media/coverImage/user/me/upload",
+            params=params,
+            content=content,
+            headers=headers,
+        )
+        return CoverImageUploadResponse.model_validate(response.json())
 
     async def upload_icon(
         self,

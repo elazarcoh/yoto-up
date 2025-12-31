@@ -42,4 +42,4 @@ EXPOSE 8000
 # Run with hot reload
 # We use uv run to ensure we're using the environment, 
 # though PATH is already set so python would also work.
-CMD ["uv", "run", "yoto-server", "serve", "--reload", "--no-browser"]
+CMD ["uv", "run", "yoto-server", "serve", "--host", "0.0.0.0", "--reload", "--no-browser"]

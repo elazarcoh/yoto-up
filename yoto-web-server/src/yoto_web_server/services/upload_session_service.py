@@ -8,15 +8,14 @@ Tracks multiple concurrent upload sessions with their files and processing statu
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List
 
 from loguru import logger
 
 from yoto_web_server.models import (
-    UploadSession,
     UploadFileStatus,
-    UploadStatus,
+    UploadSession,
     UploadSessionInitRequest,
+    UploadStatus,
 )
 
 
@@ -32,16 +31,16 @@ class UploadSessionService:
         """Initialize the upload session service."""
         # In production, this would use Redis or a database
         # Format: {session_id: UploadSession}
-        self._sessions: Dict[str, UploadSession] = {}
+        self._sessions: dict[str, UploadSession] = {}
         # Track sessions by playlist for quick lookup
         # Format: {playlist_id: [session_ids]}
-        self._playlist_sessions: Dict[str, List[str]] = {}
+        self._playlist_sessions: dict[str, list[str]] = {}
 
     def create_session(
         self,
         playlist_id: str,
         user_id: str,
-        user_session_id: Optional[str],
+        user_session_id: str | None,
         request: UploadSessionInitRequest,
     ) -> UploadSession:
         """
@@ -65,11 +64,11 @@ class UploadSessionService:
             user_session_id=user_session_id,
             upload_mode=request.upload_mode,
             normalize=request.normalize,
-            target_lufs=request.target_lufs or -23.0,
+            target_lufs=request.target_lufs,
             normalize_batch=request.normalize_batch,
             analyze_intro_outro=request.analyze_intro_outro,
-            segment_seconds=request.segment_seconds or 10.0,
-            similarity_threshold=request.similarity_threshold or 0.75,
+            segment_seconds=request.segment_seconds,
+            similarity_threshold=request.similarity_threshold,
             show_waveform=request.show_waveform,
         )
 
@@ -88,7 +87,7 @@ class UploadSessionService:
         session_id: str,
         filename: str,
         size_bytes: int,
-    ) -> Optional[UploadFileStatus]:
+    ) -> UploadFileStatus | None:
         """
         Register a file in an upload session.
 
@@ -115,10 +114,7 @@ class UploadSessionService:
         )
 
         session.files.append(file_status)
-        logger.info(
-            f"Registered file {filename} ({size_bytes} bytes) "
-            f"in session {session_id}"
-        )
+        logger.info(f"Registered file {filename} ({size_bytes} bytes) in session {session_id}")
         return file_status
 
     def update_file_progress(
@@ -183,9 +179,7 @@ class UploadSessionService:
                 file_status.temp_path = temp_path
                 file_status.uploaded_at = datetime.utcnow()
                 self._update_session_progress(session)
-                logger.info(
-                    f"File {file_id} uploaded successfully to {temp_path}"
-                )
+                logger.info(f"File {file_id} uploaded successfully to {temp_path}")
                 return True
 
         return False
@@ -278,14 +272,12 @@ class UploadSessionService:
                 file_status.status = UploadStatus.ERROR
                 file_status.error = error_message
                 self._update_session_progress(session)
-                logger.error(
-                    f"File {file_id} error: {error_message}"
-                )
+                logger.error(f"File {file_id} error: {error_message}")
                 return True
 
         return False
 
-    def get_session(self, session_id: str) -> Optional[UploadSession]:
+    def get_session(self, session_id: str) -> UploadSession | None:
         """
         Get a session by ID.
 
@@ -297,7 +289,9 @@ class UploadSessionService:
         """
         return self._sessions.get(session_id)
 
-    def get_playlist_sessions(self, playlist_id: str, include_done: bool = True) -> List[UploadSession]:
+    def get_playlist_sessions(
+        self, playlist_id: str, include_done: bool = True
+    ) -> list[UploadSession]:
         """
         Get all sessions for a playlist.
 
@@ -339,9 +333,7 @@ class UploadSessionService:
                 try:
                     Path(file_status.temp_path).unlink(missing_ok=True)
                 except Exception as e:
-                    logger.warning(
-                        f"Failed to delete temp file {file_status.temp_path}: {e}"
-                    )
+                    logger.warning(f"Failed to delete temp file {file_status.temp_path}: {e}")
 
         # Remove from playlist tracking
         playlist_id = session.playlist_id
@@ -386,3 +378,9 @@ class UploadSessionService:
             session.overall_status = UploadStatus.DONE
         else:
             session.overall_status = UploadStatus.PENDING
+
+    def update_new_chapter_ids(self, session_id: str, chapter_ids: list[str]) -> None:
+        """Update the list of new chapter IDs for a session."""
+        session = self.get_session(session_id)
+        if session:
+            session.new_chapter_ids = chapter_ids

@@ -5,7 +5,7 @@ Handles device viewing and control.
 """
 
 from datetime import time as dt_time
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -41,14 +41,15 @@ async def list_devices(request: Request, yoto_client: YotoApiDep) -> str:
 
 
 @router.get("/{device_id}", response_class=HTMLResponse)
-async def device_detail(
-    request: Request, device_id: str, yoto_client: YotoApiDep
-) -> str:
+async def device_detail(request: Request, device_id: str, yoto_client: YotoApiDep) -> str:
     """Render device detail page."""
     devices = await yoto_client.get_devices()
+    logger.info(f"Requested device_id: {device_id}")
+    logger.info(f"Available devices: {[d.deviceId for d in devices]}")
     device = next((d for d in devices if d.deviceId == device_id), None)
 
     if not device:
+        logger.error(f"Device {device_id} not found in list")
         raise HTTPException(status_code=404, detail="Device not found")
 
     status = await yoto_client.get_device_status(device_id)
@@ -72,9 +73,9 @@ async def play_card(
     card_id: Annotated[str, Form()],
     yoto_client: YotoApiDep,
     mqtt_service: MqttServiceDep,
-    chapter: Optional[int] = Form(None),
-    track: Optional[int] = Form(None),
-    seconds: Optional[int] = Form(0),
+    chapter: int | None = Form(None),
+    track: int | None = Form(None),
+    seconds: int | None = Form(0),
 ) -> str:
     """Play a card via MQTT."""
     try:
@@ -226,11 +227,7 @@ async def update_config(
     # Merge updates from form
     current_config = current.device.config
     new_config = current_config.model_copy(
-        update={
-            k: form_data[k]
-            for k in form_data.keys()
-            if k in current_config.model_fields_set
-        }
+        update={k: form_data[k] for k in form_data.keys() if k in current_config.model_fields_set}
     )
     current.device.config = new_config
     update = _update_from_current_config(current)
@@ -248,9 +245,10 @@ async def update_config(
 
 class UpdateForm(BaseModel):
     """Form for updating alarm fields."""
+
     is_enabled: bool | None = None
     time: dt_time | None = None
-    tone_id: Optional[str] = None
+    tone_id: str | None = None
     volume_level: str | None = None
     # weekdays
     monday: bool | None = None
@@ -276,10 +274,7 @@ async def create_alarm(
 
         # Create new alarm with defaults: all week, 7:00 AM, tone 4OD25, volume 16, enabled
         new_alarm = ConfigAlarms(
-            weekdays={
-                day: True
-                for day in DAYS
-            },
+            weekdays=dict.fromkeys(DAYS, True),
             time=dt_time(7, 0),
             tone_id="4OD25",
             volume_level="16",
