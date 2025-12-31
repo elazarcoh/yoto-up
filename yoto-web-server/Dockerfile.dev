@@ -1,24 +1,31 @@
-# Development Dockerfile with hot reload support
-FROM python:3.13-slim
+# Development Dockerfile
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Enable bytecode compilation and copy mode
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Install system dependencies (curl for healthcheck)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Copy project definition files
+COPY pyproject.toml uv.lock ./
 
-# Copy project files
-COPY pyproject.toml ./
+# Install dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project
+
+# Copy the project source code
 COPY README.md ./
 COPY src/ ./src/
 
-# Create virtual environment and install dependencies
-RUN uv venv /app/.venv
-RUN uv pip install --no-cache-dir -e ".[dev]"
+# Install the project in editable mode
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"
@@ -26,9 +33,13 @@ ENV PYTHONUNBUFFERED=1
 ENV YOTO_WEB_HOST=0.0.0.0
 ENV YOTO_WEB_PORT=8000
 ENV YOTO_WEB_DEBUG=true
+ENV CACHE_DIR=/app/cache
+ENV DATA_DIR=/app/data
 
 # Expose port
 EXPOSE 8000
 
 # Run with hot reload
-CMD ["python", "-m", "yoto_web_server.cli", "--reload", "--no-browser"]
+# We use uv run to ensure we're using the environment, 
+# though PATH is already set so python would also work.
+CMD ["uv", "run", "yoto-server", "serve", "--reload", "--no-browser"]

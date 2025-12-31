@@ -11,6 +11,9 @@ services:
       - YOTO_WEB_PORT=8000
       - YOTO_WEB_DEBUG=false
       - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY:-}
+    volumes:
+      - yoto_data:/app/data
+      - yoto_cache:/app/cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -19,7 +22,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # Development service with hot reload
+  # Development service with hot reload and watch
   yoto-web-server-dev:
     build:
       context: .
@@ -33,7 +36,33 @@ services:
       - YOTO_WEB_DEBUG=true
       - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY:-}
     volumes:
-      - ./src:/app/src:ro
+      # Mount the source code for live updates
+      - ./src:/app/src
+      # Mount pyproject.toml and uv.lock to keep them in sync if needed (optional, but good for visibility)
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./uv.lock:/app/uv.lock
+      # Preserve the container's .venv
+      - /app/.venv
+      # Persist data and cache
+      - yoto_data_dev:/app/data
+      - yoto_cache_dev:/app/cache
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /app/src
+        - action: rebuild
+          path: ./pyproject.toml
+        - action: rebuild
+          path: ./uv.lock
     profiles:
       - dev
     restart: unless-stopped
+    env_file:
+      - .env
+
+volumes:
+  yoto_data:
+  yoto_cache:
+  yoto_data_dev:
+  yoto_cache_dev:

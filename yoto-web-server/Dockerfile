@@ -1,34 +1,55 @@
 # Build stage
-FROM python:3.13-slim as builder
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim AS builder
+
+# Enable bytecode compilation
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
 
 WORKDIR /app
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install dependencies
+# Copy lockfile and pyproject.toml first to leverage cache
+COPY pyproject.toml uv.lock ./
 
-# Copy project files
-COPY pyproject.toml ./
+# Install dependencies without the project itself
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --no-editable
+
+# Copy the project source code
 COPY README.md ./
 COPY src/ ./src/
 
-# Create virtual environment and install dependencies
-RUN uv venv /app/.venv
-RUN uv pip install --no-cache-dir -e .
+# Install the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable
 
 # Runtime stage
-FROM python:3.13-slim
+FROM python:3.13-slim-bookworm
+
+# Create a non-root user
+RUN useradd -m -r app
 
 WORKDIR /app
 
-# Copy virtual environment from builder
-COPY --from=builder /app/.venv /app/.venv
-COPY --from=builder /app/src /app/src
+# Copy the virtual environment from the builder stage
+COPY --from=builder --chown=app:app /app/.venv /app/.venv
+COPY --from=builder --chown=app:app /app/src /app/src
 
 # Set environment variables
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV YOTO_WEB_HOST=0.0.0.0
 ENV YOTO_WEB_PORT=8000
+# Configure app paths to use writable directories
+ENV CACHE_DIR=/app/cache
+ENV DATA_DIR=/app/data
+
+# Create necessary directories and set permissions
+RUN mkdir -p /app/cache /app/data && \
+    chown -R app:app /app/cache /app/data
+
+# Switch to the non-root user
+USER app
 
 # Expose port
 EXPOSE 8000

@@ -93,6 +93,73 @@
             "command": "uv",
             "args": ["run", "ruff", "format", "src/yoto_web_server"],
             "group": "build"
+        },
+        {
+            "label": "Docker: Build Dev",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "build", "yoto-web-server-dev"],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Start Dev (with watch)",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "up", "yoto-web-server-dev", "--watch"],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            },
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": ".",
+                    "file": 1,
+                    "location": 2,
+                    "message": 3
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Starting.*",
+                    "endsPattern": "^.*Uvicorn running.*"
+                }
+            }
+        },
+        {
+            "label": "Docker: Start Dev (no watch)",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "up", "yoto-web-server-dev"],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            }
+        },
+        {
+            "label": "Docker: Stop Dev",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "down"],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Build Prod",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "build", "yoto-web-server"],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Start Prod",
+            "type": "shell",
+            "command": "docker",
+            "args": ["compose", "up", "yoto-web-server"],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            }
         }
     ]
 }
