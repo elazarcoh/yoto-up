@@ -1,0 +1,142 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "yoto-web-server"
+version = "0.1.0"
+description = "Standalone web server for managing Yoto cards and playlists"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "xkjq" }]
+keywords = ["yoto", "web", "fastapi"]
+license = "MIT"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    
+    # HTTP client
+    "httpx>=0.28.0",
+    
+    # HTML rendering
+    "pydom>=0.3.6",
+    
+    # Templating (for fallback)
+    "jinja2>=3.1.0",
+    
+    # File uploads
+    "python-multipart>=0.0.18",
+    
+    # Dependency injection
+    "dependency-injector>=4.45.0",
+    
+    # CLI
+    "typer>=0.15.0",
+    
+    # Settings management
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    
+    # Security
+    "itsdangerous>=2.2.0",
+    "cryptography>=44.0.0",
+    
+    # Environment
+    "python-dotenv>=1.0.1",
+    
+    # HTML parsing (for icon scraping)
+    "selectolax>=0.4.0",
+    
+    # MQTT for device communication
+    "aiomqtt>=2.3.0",
+    
+    # Logging
+    "loguru>=0.7.3",
+    
+    # Fuzzy search
+    "rapidfuzz>=3.10.0",
+
+    # Audio processing
+    "ffmpeg-normalize>=1.36.0",
+    "pydub>=0.25.0",
+    "numpy>=1.25.0",
+    "matplotlib>=3.7.0",
+    "ffmpeg-binaries>=0.0.1",
+    "pydub>=0.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pre-commit>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/xkjq/yoto-up"
+Source = "https://github.com/xkjq/yoto-up"
+Issues = "https://github.com/xkjq/yoto-up/issues"
+
+[project.scripts]
+yoto-server = "yoto_web_server.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/yoto_web_server"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "ARG001", # unused function argument
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["yoto_web_server"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,34 @@
+# Development Dockerfile with hot reload support
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Copy project files
+COPY pyproject.toml ./
+COPY README.md ./
+COPY src/ ./src/
+
+# Create virtual environment and install dependencies
+RUN uv venv /app/.venv
+RUN uv pip install --no-cache-dir -e ".[dev]"
+
+# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV YOTO_WEB_HOST=0.0.0.0
+ENV YOTO_WEB_PORT=8000
+ENV YOTO_WEB_DEBUG=true
+
+# Expose port
+EXPOSE 8000
+
+# Run with hot reload
+CMD ["python", "-m", "yoto_web_server.cli", "--reload", "--no-browser"]

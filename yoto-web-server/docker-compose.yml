@@ -1,0 +1,39 @@
+services:
+  yoto-web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: yoto-web-server
+    ports:
+      - "8000:8000"
+    environment:
+      - YOTO_WEB_HOST=0.0.0.0
+      - YOTO_WEB_PORT=8000
+      - YOTO_WEB_DEBUG=false
+      - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY:-}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Development service with hot reload
+  yoto-web-server-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: yoto-web-server-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - YOTO_WEB_HOST=0.0.0.0
+      - YOTO_WEB_PORT=8000
+      - YOTO_WEB_DEBUG=true
+      - SESSION_ENCRYPTION_KEY=${SESSION_ENCRYPTION_KEY:-}
+    volumes:
+      - ./src:/app/src:ro
+    profiles:
+      - dev
+    restart: unless-stopped
