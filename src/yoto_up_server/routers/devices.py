@@ -12,7 +12,6 @@ from pydantic import BaseModel
 
 from yoto_up.yoto_api_client import DAYS, ConfigAlarms, DeviceConfig, DeviceConfigUpdate
 from yoto_up_server.dependencies import MqttServiceDep, YotoClientDep
-from yoto_up_server.templates.alarms import AlarmCard
 from yoto_up_server.templates.base import render_page, render_partial
 from yoto_up_server.templates.device_detail import DeviceDetailPage
 from yoto_up_server.templates.devices import DevicesPage
@@ -245,54 +244,65 @@ async def update_config(
 # ============================================================================
 
 
+class UpdateForm(BaseModel):
+    """Form for updating alarm fields."""
+    is_enabled: bool | None = None
+    time: dt_time | None = None
+    tone_id: Optional[str] = None
+    volume_level: str | None = None
+    # weekdays
+    monday: bool | None = None
+    tuesday: bool | None = None
+    wednesday: bool | None = None
+    thursday: bool | None = None
+    friday: bool | None = None
+    saturday: bool | None = None
+    sunday: bool | None = None
+
+
 @router.post("/{device_id}/alarms", response_class=HTMLResponse)
 async def create_alarm(
     device_id: str,
     yoto_client: YotoClientDep,
 ) -> str:
-    """Create a new alarm."""
+    """Create a new default alarm at the top of the list."""
+    from yoto_up_server.templates.alarms import AlarmCard
 
-    # Fetch current config
-    current_config = await yoto_client.get_device_config(device_id)
-    devices = await yoto_client.get_devices()
-    device = next((d for d in devices if d.deviceId == device_id), None)
-    name = device.name if device else "Yoto Player"
+    try:
+        # Fetch current config
+        current_config = await yoto_client.get_device_config(device_id)
 
-    # Create new alarm
-    new_alarm = ConfigAlarms(
-        weekdays={
-            day: False
-            for day in [
-                "monday",
-                "tuesday",
-                "wednesday",
-                "thursday",
-                "friday",
-                "saturday",
-                "sunday",
-            ]
-        },
-        time=dt_time(9, 0),
-        tone_id=None,
-        volume_level="3",
-        is_enabled=True,
-    )
+        # Create new alarm with defaults: all week, 7:00 AM, tone 4OD25, volume 16, enabled
+        new_alarm = ConfigAlarms(
+            weekdays={
+                day: True
+                for day in DAYS
+            },
+            time=dt_time(7, 0),
+            tone_id="4OD25",
+            volume_level="16",
+            is_enabled=True,
+        )
 
-    # Add to alarms list
-    config_dict = current_config.device.config.model_dump(
-        by_alias=True, exclude_none=True
-    )
-    alarms = config_dict.get("alarms", [])
-    alarm_index = len(alarms)
+        # Insert at the beginning (index 0)
+        alarms = current_config.device.config.alarms
+        alarms.insert(0, new_alarm)
+        current_config.device.config.alarms = alarms
+        update = _update_from_current_config(current_config)
+        await yoto_client.update_device_config(device_id, update)
 
-    # Update config
-    config_dict["alarms"] = alarms + [new_alarm.model_dump(by_alias=True)]
-    new_config = DeviceConfig(**config_dict)
-    await yoto_client.update_device_config(device_id, name, new_config)
-
-    return render_partial(
-        AlarmCard(alarm=new_alarm, alarm_index=alarm_index, device_id=device_id)
-    )
+        # Return the new alarm card with saved state at index 0
+        return render_partial(
+            AlarmCard(
+                alarm=new_alarm,
+                alarm_index=0,
+                device_id=device_id,
+                just_saved=True,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Failed to create alarm: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{device_id}/alarms/{alarm_index}", response_class=HTMLResponse)
@@ -315,21 +325,6 @@ async def delete_alarm(
         await yoto_client.update_device_config(device_id, update)
 
     return ""
-
-
-class UpdateForm(BaseModel):
-    is_enabled: bool | None = None
-    time: dt_time | None = None
-    tone_id: Optional[str] = None
-    volume_level: str | None = None
-    # weekdays
-    monday: bool | None = None
-    tuesday: bool | None = None
-    wednesday: bool | None = None
-    thursday: bool | None = None
-    friday: bool | None = None
-    saturday: bool | None = None
-    sunday: bool | None = None
 
 
 @router.patch("/{device_id}/alarms/{alarm_index}", response_class=HTMLResponse)

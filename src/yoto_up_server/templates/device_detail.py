@@ -17,6 +17,23 @@ from yoto_up_server.templates.config_components import (
 from yoto_up_server.templates.alarms import AlarmsSection
 
 
+class AlarmsPanel(Component):
+    """Alarms configuration UI."""
+
+    def __init__(self, *, device_id: str, config: DeviceConfig):
+        self.device_id = device_id
+        self.config = config
+        self.cfg = config.device.config
+
+    def render(self):
+        return d.Div(classes="space-y-8")(
+            AlarmsSection(
+                device_id=self.device_id,
+                alarms=self.cfg.alarms,
+            ),
+        )
+
+
 class DeviceDetailPage(Component):
     """Device detail page with tabs."""
 
@@ -57,6 +74,14 @@ class DeviceDetailPage(Component):
                         ),
                         **xon().click.prevent("tab = 'settings'"),
                     )("Settings"),
+                    d.A(
+                        href="#",
+                        classes="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer",
+                        **xbind().classes(
+                            "{ 'border-indigo-500 text-indigo-600': tab === 'alarms', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'alarms' }"
+                        ),
+                        **xon().click.prevent("tab = 'alarms'"),
+                    )("Alarms"),
                 )
             ),
             # Tab Content
@@ -65,6 +90,9 @@ class DeviceDetailPage(Component):
             ),
             d.Div(**xshow("tab === 'settings'"))(
                 SettingsPanel(device_id=self.device.deviceId, config=self.config)
+            ),
+            d.Div(**xshow("tab === 'alarms'"))(
+                AlarmsPanel(device_id=self.device.deviceId, config=self.config)
             ),
             # Modal containers for JSON display
             d.Div(id="status-json-modal-container")(),
@@ -426,11 +454,6 @@ class SettingsPanel(Component):
                     device_id=self.device_id,
                     help_text="Device logging verbosity",
                 )
-            ),
-            # Alarms Section
-            AlarmsSection(
-                device_id=self.device_id,
-                alarms=self.cfg.alarms,
             ),
         )
 
