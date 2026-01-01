@@ -53,7 +53,7 @@ from yoto_web_server.templates.icon_components import (
 from yoto_web_server.templates.playlist_components import ChapterItem, CoverModalPartial
 from yoto_web_server.templates.playlist_detail import (
     EditControlsPartial,
-    PlaylistDetailRefactored,
+    PlaylistDetail,
 )
 from yoto_web_server.templates.playlists import (
     PlaylistDetailPartial,
@@ -182,15 +182,13 @@ async def get_playlist_detail(
         if is_htmx_request:
             # Return just the partial for HTMX swaps
             return render_partial(
-                PlaylistDetailRefactored(
-                    card=card, playlist_id=playlist_id, new_chapters=new_chapters_list
-                )
+                PlaylistDetail(card=card, playlist_id=playlist_id, new_chapters=new_chapters_list)
             )
         else:
             # Return full page for direct navigation
             return render_page(
                 title=f"{card.title or 'Playlist'} - Yoto Web Server",
-                content=PlaylistDetailRefactored(
+                content=PlaylistDetail(
                     card=card, playlist_id=playlist_id, new_chapters=new_chapters_list
                 ),
                 request=request,
@@ -248,7 +246,7 @@ async def create_playlist(
         # Create a new card via API
         card: Card = await yoto_client.create_card(Card(title=title))
 
-        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.cardId))
+        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.card_id))
 
     except Exception as e:
         logger.error(f"Failed to create playlist: {e}")
@@ -288,9 +286,9 @@ async def create_playlist_with_cover(
             # Upload cover image via API
             # This would require an API method to upload cover images
             # For now, just create the card without cover
-            logger.info(f"Cover upload for playlist {card.cardId} not yet implemented")
+            logger.info(f"Cover upload for playlist {card.card_id} not yet implemented")
 
-        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.cardId))
+        return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.card_id))
 
     except Exception as e:
         logger.error(f"Failed to create playlist with cover: {e}")
@@ -371,8 +369,8 @@ async def update_playlist_items_icon(
             display = chapter.display
             if not display:
                 display = ChapterDisplay()
-            if display.icon16x16 != icon_val:
-                display.icon16x16 = icon_val
+            if display.icon_16x16 != icon_val:
+                display.icon_16x16 = icon_val
                 chapter.display = display
                 updated = True
 
@@ -384,8 +382,8 @@ async def update_playlist_items_icon(
                         display = track.display
                         if not display:
                             display = TrackDisplay()
-                        if display.icon16x16 != icon_val:
-                            display.icon16x16 = icon_val
+                        if display.icon_16x16 != icon_val:
+                            display.icon_16x16 = icon_val
                             track.display = display
                             updated = True
 
@@ -394,7 +392,7 @@ async def update_playlist_items_icon(
         await yoto_client.update_card(card)
 
     # Return updated detail view
-    return render_partial(PlaylistDetailRefactored(card=card, playlist_id=card.cardId))
+    return render_partial(PlaylistDetail(card=card, playlist_id=card.card_id))
 
 
 @router.post("/reorder-chapters", response_class=JSONResponse)
@@ -522,7 +520,7 @@ async def delete_selected_chapters(
             and card.content.chapters
         ):
             chapters_list = [
-                ChapterItem(chapter=chapter, index=i, card_id=card.cardId)
+                ChapterItem(chapter=chapter, index=i, card_id=card.card_id)
                 for i, chapter in enumerate(card.content.chapters)
             ]
 
@@ -581,7 +579,7 @@ async def change_cover(
         logger.info(f"Updated cover for playlist {playlist_id}")
 
         # Return updated detail
-        return render_partial(PlaylistDetailRefactored(card=card, playlist_id=playlist_id))
+        return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
     except HTTPException:
         raise
@@ -1073,7 +1071,7 @@ async def update_playlist_cover(
         if not card.metadata.cover:
             card.metadata.cover = CardCover()
 
-        card.metadata.cover.imageL = response.cover_image.mediaUrl
+        card.metadata.cover.image_l = response.cover_image.media_url
 
         # Save the card
         await yoto_client.update_card(card)
@@ -1082,7 +1080,7 @@ async def update_playlist_cover(
         card = await yoto_client.get_card(playlist_id)
 
         # Return updated detail view
-        return render_partial(PlaylistDetailRefactored(card=card, playlist_id=playlist_id))
+        return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
     except Exception as e:
         logger.error(f"Failed to update playlist cover: {e}")
@@ -1115,7 +1113,7 @@ async def remove_playlist_cover(
         card = await yoto_client.get_card(playlist_id)
 
         # Return updated detail view
-        return render_partial(PlaylistDetailRefactored(card=card, playlist_id=playlist_id))
+        return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
     except Exception as e:
         logger.error(f"Failed to remove playlist cover: {e}")

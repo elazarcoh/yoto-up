@@ -11,7 +11,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-
 # Upload Models
 
 
@@ -176,9 +175,9 @@ class CardMetadata(BaseModel):
     author: str | None = None
     description: str | None = None
     cover: dict[str, str] | None = None
-    imageL: str | None = None
-    imageM: str | None = None
-    imageS: str | None = None
+    image_l: str | None = Field(None, alias="imageL")
+    image_m: str | None = Field(None, alias="imageM")
+    image_s: str | None = Field(None, alias="imageS")
     extra: dict[str, Any] = Field(default_factory=dict)
 
     class Config:
@@ -188,12 +187,12 @@ class CardMetadata(BaseModel):
 class PlaylistCard(BaseModel):
     """A card (playlist item) from the Yoto API."""
 
-    cardId: str
+    card_id: str = Field(..., alias="cardId")
     title: str
     metadata: CardMetadata | None = None
     tags: list[str] | None = None
     slug: str | None = None
-    createdAt: datetime | None = None
+    created_at: datetime | None = Field(None, alias="createdAt")
     extra: dict[str, Any] = Field(default_factory=dict)
 
     class Config:

@@ -2,7 +2,6 @@
 Icon-related components and partials for HTMX.
 """
 
-from typing import List, Optional
 import json
 
 from pydom import Component
@@ -20,10 +19,10 @@ class PaginationControls(Component):
         page: int,
         per_page: int,
         total: int,
-        source: List[str] | str,
-        query: Optional[str] = None,
+        source: list[str] | str,
+        query: str | None = None,
         fuzzy: bool = True,
-        target_id: Optional[str] = None,
+        target_id: str | None = None,
     ):
         super().__init__()
         self.page = page
@@ -124,14 +123,14 @@ class IconGridPartial(Component):
     def __init__(
         self,
         *,
-        icons: List[DisplayIcon],
+        icons: list[DisplayIcon],
         title: str = "Icons",
         use_lazy_loading: bool = False,
         total: int = 0,
         page: int = 1,
         per_page: int = 50,
-        source: List[str] | str | None = None,
-        query: Optional[str] = None,
+        source: list[str] | str | None = None,
+        query: str | None = None,
         fuzzy: bool = True,
     ):
         super().__init__()
@@ -206,7 +205,7 @@ class IconGridPartial(Component):
 
     def _render_icon(self, icon: DisplayIcon):
         """Render a single icon as a submit button in a form."""
-        icon_id = icon.mediaId
+        icon_id = icon.media_id
         title = icon.title or "Untitled"
 
         # Use lazy loading for all icons (official, user, and yotoicons)
@@ -232,8 +231,8 @@ class IconSidebarPartial(Component):
         self,
         *,
         playlist_id: str,
-        chapter_ids: Optional[List[int]] = None,
-        track_ids: Optional[List[tuple[int, int]]] = None,
+        chapter_ids: list[int] | None = None,
+        track_ids: list[tuple[int, int]] | None = None,
     ):
         super().__init__()
         self.playlist_id = playlist_id
@@ -360,7 +359,7 @@ class IconSearchResultsPartial(Component):
     def __init__(
         self,
         *,
-        icons: List[DisplayIcon],
+        icons: list[DisplayIcon],
         query: str,
     ):
         super().__init__()
@@ -426,7 +425,7 @@ class LazyIconImg(Component):
         icon_id: str,
         title: str = "Icon",
         classes: str = "w-6 h-6",
-        container_id: Optional[str] = None,
+        container_id: str | None = None,
     ):
         super().__init__()
         self.icon_id = icon_id

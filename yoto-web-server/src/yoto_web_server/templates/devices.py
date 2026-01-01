@@ -22,9 +22,9 @@ class DeviceCard(Component):
         status_text = "Online" if is_online else "Offline"
 
         # Device name
-        name = self.device.name or self.device.deviceId
+        name = self.device.name or self.device.device_id
 
-        return d.A(href=f"/devices/{self.device.deviceId}", classes="block")(
+        return d.A(href=f"/devices/{self.device.device_id}", classes="block")(
             d.Div(classes="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow")(
                 d.Div(classes="flex items-center justify-between")(
                     d.Div(classes="flex items-center gap-4")(
@@ -35,9 +35,9 @@ class DeviceCard(Component):
                         d.Div()(
                             d.H3(classes="font-semibold text-gray-800")(name),
                             d.P(classes="text-sm text-gray-500")(
-                                f"ID: {self.device.deviceId[:8]}..."
-                                if len(self.device.deviceId) > 8
-                                else f"ID: {self.device.deviceId}"
+                                f"ID: {self.device.device_id[:8]}..."
+                                if len(self.device.device_id) > 8
+                                else f"ID: {self.device.device_id}"
                             ),
                         ),
                     ),
@@ -123,7 +123,7 @@ class DeviceDetailPage(Component):
                 ),
             )
 
-        name = self.device.name or self.device.deviceId
+        name = self.device.name or self.device.device_id
 
         return d.Div(classes="max-w-4xl mx-auto")(
             d.A(href="/devices", classes="text-blue-600 hover:underline mb-4 inline-block")(
@@ -139,7 +139,7 @@ class DeviceDetailPage(Component):
                 d.Dl(classes="grid grid-cols-1 md:grid-cols-2 gap-4")(
                     d.Div(classes="bg-gray-50 px-4 py-3 rounded")(
                         d.Dt(classes="text-sm text-gray-500")("Device ID"),
-                        d.Dd(classes="font-mono text-sm")(self.device.deviceId),
+                        d.Dd(classes="font-mono text-sm")(self.device.device_id),
                     ),
                     d.Div(classes="bg-gray-50 px-4 py-3 rounded")(
                         d.Dt(classes="text-sm text-gray-500")("Status"),

@@ -2,39 +2,9 @@
 Templates package - PyDOM components for rendering HTML.
 """
 
+from yoto_web_server.templates.alarms import AlarmCard, AlarmsSection
 from yoto_web_server.templates.auth import AuthPage, AuthStatusPartial, DeviceCodeInstructions
 from yoto_web_server.templates.base import BaseLayout, Navigation, render_page, render_partial
-from yoto_web_server.templates.devices import DeviceCard, DeviceDetailPage, DevicesPage
-from yoto_web_server.templates.home import HomePage
-from yoto_web_server.templates.icons import IconGrid, IconSearchForm, IconSearchResults, IconsPage
-from yoto_web_server.templates.playlists import (
-    ChapterItem,
-    PlaylistCard,
-    PlaylistDetailPartial,
-    PlaylistListPartial,
-    PlaylistsPage,
-)
-
-# Additional component imports
-from yoto_web_server.templates.htmx_helpers import (
-    ClipboardCopyScript,
-    FilePickerScript,
-    SortableInitScript,
-    ToastNotificationSystem,
-    ToggleClassScript,
-)
-from yoto_web_server.templates.playlist_components import (
-    ChapterItem as ChapterItemComponent,
-    TrackItem,
-)
-from yoto_web_server.templates.icon_components import (
-    IconGridPartial,
-    IconImg,
-    IconSidebarPartial,
-    LazyIconImg,
-    LoadingIconIndicator,
-    PaginationControls,
-)
 from yoto_web_server.templates.config_components import (
     ColorPickerSetting,
     ConfigSection,
@@ -44,17 +14,51 @@ from yoto_web_server.templates.config_components import (
     TimeSetting,
     ToggleSetting,
 )
-from yoto_web_server.templates.alarms import AlarmCard, AlarmsSection
 from yoto_web_server.templates.device_detail import (
     AlarmsPanel,
-    DeviceDetailPage as DeviceDetailPageRefactored,
     PlaybackControlPanel,
     SettingsPanel,
     StatusMetric,
 )
+from yoto_web_server.templates.device_detail import (
+    DeviceDetailPage as DeviceDetailPageRefactored,
+)
+from yoto_web_server.templates.devices import DeviceCard, DeviceDetailPage, DevicesPage
+from yoto_web_server.templates.home import HomePage
+
+# Additional component imports
+from yoto_web_server.templates.htmx_helpers import (
+    ClipboardCopyScript,
+    FilePickerScript,
+    SortableInitScript,
+    ToastNotificationSystem,
+    ToggleClassScript,
+)
+from yoto_web_server.templates.icon_components import (
+    IconGridPartial,
+    IconImg,
+    IconSidebarPartial,
+    LazyIconImg,
+    LoadingIconIndicator,
+    PaginationControls,
+)
+from yoto_web_server.templates.icons import IconGrid, IconSearchForm, IconSearchResults, IconsPage
+from yoto_web_server.templates.playlist_components import (
+    ChapterItem as ChapterItemComponent,
+)
+from yoto_web_server.templates.playlist_components import (
+    TrackItem,
+)
 from yoto_web_server.templates.playlist_detail import (
     EditControlsPartial,
-    PlaylistDetailRefactored,
+    PlaylistDetail,
+)
+from yoto_web_server.templates.playlists import (
+    ChapterItem,
+    PlaylistCard,
+    PlaylistDetailPartial,
+    PlaylistListPartial,
+    PlaylistsPage,
 )
 from yoto_web_server.templates.upload_components import (
     ActiveUploadsSection,
@@ -125,7 +129,7 @@ __all__ = [
     "StatusMetric",
     # Playlist Detail Refactored
     "EditControlsPartial",
-    "PlaylistDetailRefactored",
+    "PlaylistDetail",
     # Upload Components
     "ActiveUploadsSection",
     "JsonDisplayModalPartial",

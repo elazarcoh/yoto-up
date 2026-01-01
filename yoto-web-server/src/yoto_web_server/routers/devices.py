@@ -45,8 +45,8 @@ async def device_detail(request: Request, device_id: str, yoto_client: YotoApiDe
     """Render device detail page."""
     devices = await yoto_client.get_devices()
     logger.info(f"Requested device_id: {device_id}")
-    logger.info(f"Available devices: {[d.deviceId for d in devices]}")
-    device = next((d for d in devices if d.deviceId == device_id), None)
+    logger.info(f"Available devices: {[d.device_id for d in devices]}")
+    device = next((d for d in devices if d.device_id == device_id), None)
 
     if not device:
         logger.error(f"Device {device_id} not found in list")

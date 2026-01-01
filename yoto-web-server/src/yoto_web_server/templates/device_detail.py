@@ -4,17 +4,18 @@ Device Detail templates.
 
 from pydom import Component
 from pydom import html as d
-from yoto_web_server.api.client import DeviceConfig, DeviceStatus, Device
-from yoto_web_server.utils.alpine import xbind, xon, xdata, xshow
-from yoto_web_server.templates.config_components import (
-    ConfigSection,
-    SliderSetting,
-    ToggleSetting,
-    SelectSetting,
-    TimeSetting,
-    ColorPickerSetting,
-)
+
+from yoto_web_server.api.client import Device, DeviceConfig, DeviceStatus
 from yoto_web_server.templates.alarms import AlarmsSection
+from yoto_web_server.templates.config_components import (
+    ColorPickerSetting,
+    ConfigSection,
+    SelectSetting,
+    SliderSetting,
+    TimeSetting,
+    ToggleSetting,
+)
+from yoto_web_server.utils.alpine import xbind, xdata, xon, xshow
 
 
 class AlarmsPanel(Component):
@@ -48,7 +49,7 @@ class DeviceDetailPage(Component):
             d.Div(classes="flex justify-between items-center mb-6")(
                 d.Div()(
                     d.H1(classes="text-2xl font-bold text-gray-900")(self.device.name),
-                    d.P(classes="text-sm text-gray-500")(f"ID: {self.device.deviceId}"),
+                    d.P(classes="text-sm text-gray-500")(f"ID: {self.device.device_id}"),
                 ),
                 d.Span(
                     classes=f"px-3 py-1 rounded-full text-sm font-medium "
@@ -86,13 +87,13 @@ class DeviceDetailPage(Component):
             ),
             # Tab Content
             d.Div(**xshow("tab === 'control'"))(
-                PlaybackControlPanel(device_id=self.device.deviceId, status=self.status)
+                PlaybackControlPanel(device_id=self.device.device_id, status=self.status)
             ),
             d.Div(**xshow("tab === 'settings'"))(
-                SettingsPanel(device_id=self.device.deviceId, config=self.config)
+                SettingsPanel(device_id=self.device.device_id, config=self.config)
             ),
             d.Div(**xshow("tab === 'alarms'"))(
-                AlarmsPanel(device_id=self.device.deviceId, config=self.config)
+                AlarmsPanel(device_id=self.device.device_id, config=self.config)
             ),
             # Modal containers for JSON display
             d.Div(id="status-json-modal-container")(),
@@ -108,9 +109,7 @@ class PlaybackControlPanel(Component):
         self.status = status
 
     def render(self):
-        return d.Div(
-            classes="bg-white rounded-lg shadow p-6"
-        )(
+        return d.Div(classes="bg-white rounded-lg shadow p-6")(
             d.Div(classes="flex justify-between items-center mb-4")(
                 d.H3(classes="text-lg font-semibold text-gray-900")("Playback Control"),
                 d.Button(
@@ -157,9 +156,7 @@ class PlaybackControlPanel(Component):
             ),
             # Volume Slider
             d.Div(classes="mb-4")(
-                d.Label(classes="block text-sm font-medium text-gray-700 mb-2")(
-                    "Volume"
-                ),
+                d.Label(classes="block text-sm font-medium text-gray-700 mb-2")("Volume"),
                 d.Input(
                     type="range",
                     min="0",

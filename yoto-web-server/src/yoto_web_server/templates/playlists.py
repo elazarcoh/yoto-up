@@ -2,8 +2,6 @@
 Playlists templates.
 """
 
-from typing import List
-
 from pydom import Component
 from pydom import html as d
 
@@ -103,7 +101,7 @@ class PlaylistsPage(Component):
 class PlaylistListPartial(Component):
     """Partial for playlist list."""
 
-    def __init__(self, *, cards: List[Card]):
+    def __init__(self, *, cards: list[Card]):
         super().__init__()
         self.cards = cards
 
@@ -122,7 +120,7 @@ class PlaylistListPartial(Component):
 def _render_playlist_card(card: Card):
     """Render a single playlist card."""
     # Card objects use 'cardId' attribute
-    card_id = card.cardId
+    card_id = card.card_id
     title = card.title or "Untitled"
 
     # Get category from metadata
@@ -150,12 +148,12 @@ def _render_playlist_card(card: Card):
             # Try as object
             if hasattr(metadata, "cover") and metadata.cover:
                 cover = metadata.cover
-                if hasattr(cover, "imageL") and cover.imageL:
-                    cover_url = cover.imageL
-                elif hasattr(cover, "imageM") and cover.imageM:
-                    cover_url = cover.imageM
-                elif hasattr(cover, "imageS") and cover.imageS:
-                    cover_url = cover.imageS
+                if hasattr(cover, "image_l") and cover.image_l:
+                    cover_url = cover.image_l
+                elif hasattr(cover, "image_m") and cover.image_m:
+                    cover_url = cover.image_m
+                elif hasattr(cover, "image_s") and cover.image_s:
+                    cover_url = cover.image_s
 
     # Count chapters and tracks (only available if card content was fully loaded)
     total_chapters = 0
@@ -296,7 +294,7 @@ class PlaylistDetailPartial(Component):
             description = getattr(self.card.metadata, "description", "")
             cover = getattr(self.card.metadata, "cover", None)
             if cover:
-                cover_url = getattr(cover, "imageL", None)
+                cover_url = getattr(cover, "image_l", None)
 
         # Get chapters from card content if available
         chapters = []
@@ -308,7 +306,7 @@ class PlaylistDetailPartial(Component):
         return d.Div(
             classes="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
             id="playlist-detail",
-            **{"data-playlist-id": self.card.cardId},
+            **{"data-playlist-id": self.card.card_id},
         )(
             # Sortable.js library
             d.Script(src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"),
@@ -422,7 +420,7 @@ class PlaylistDetailPartial(Component):
                             ChapterItem(
                                 chapter=chapter,
                                 index=i,
-                                card_id=self.card.cardId,
+                                card_id=self.card.card_id,
                                 playlist_id=self.playlist_id,
                             )
                             for i, chapter in enumerate(chapters)

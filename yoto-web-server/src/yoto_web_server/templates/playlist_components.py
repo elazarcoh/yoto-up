@@ -94,8 +94,8 @@ class ChapterItem(Component):
                         hx_target="#icon-sidebar-container",
                         hx_swap="innerHTML",
                     )(
-                        LazyIconImg(icon_id=self.chapter.display.icon16x16.replace("#", "%23"))
-                        if self.chapter.display and self.chapter.display.icon16x16
+                        LazyIconImg(icon_id=self.chapter.display.icon_16x16.replace("#", "%23"))
+                        if self.chapter.display and self.chapter.display.icon_16x16
                         else d.Span()
                     ),
                     # Chapter title
@@ -199,10 +199,10 @@ class CoverModalPartial(Component):
                     hx_target="#playlist-detail",  # Reload the whole detail view
                     hx_swap="outerHTML",
                     hx_indicator="#cover-loading",
+                    classes="p-6 space-y-4",
                     **{
                         "hx-on::after-request": "if(event.detail.successful) document.getElementById('cover-modal').remove()"
                     },
-                    classes="p-6 space-y-4",
                 )(
                     d.Div(classes="space-y-2")(
                         d.Label(classes="block text-sm font-medium text-gray-700")("Upload Image"),

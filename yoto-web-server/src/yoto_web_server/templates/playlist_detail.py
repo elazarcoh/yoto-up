@@ -18,7 +18,7 @@ from yoto_web_server.templates.playlist_components import ChapterItem
 from yoto_web_server.templates.upload_components import ActiveUploadsSection
 
 
-class PlaylistDetailRefactored(Component):
+class PlaylistDetail(Component):
     """Refactored playlist detail page using HTMX principles."""
 
     def __init__(self, *, card: Card, playlist_id: str = "", new_chapters: list[str] | None = None):
@@ -37,7 +37,7 @@ class PlaylistDetailRefactored(Component):
             description = getattr(self.card.metadata, "description", "")
             cover = getattr(self.card.metadata, "cover", None)
             if cover:
-                cover_url = getattr(cover, "imageL", None)
+                cover_url = getattr(cover, "image_l", None)
 
         # Get chapters from card content if available
         chapters = []
@@ -49,13 +49,13 @@ class PlaylistDetailRefactored(Component):
         return d.Div(
             classes="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
             id="playlist-detail",
-            **{"data-playlist-id": self.card.cardId},
+            **{"data-playlist-id": self.card.card_id},
         )(
             # Include necessary JavaScript libraries and helpers
             d.Script(src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"),
             SortableInitScript(
                 list_id="chapters-list",
-                save_endpoint=f"/playlists/{self.card.cardId}/reorder-chapters",
+                save_endpoint=f"/playlists/{self.card.card_id}/reorder-chapters",
                 handle_class="drag-handle",
             ),
             FilePickerScript(),
@@ -92,7 +92,7 @@ class PlaylistDetailRefactored(Component):
                 # Header section
                 self._render_header(title, description, cover_url),
                 # Active uploads section
-                ActiveUploadsSection(playlist_id=self.card.cardId),
+                ActiveUploadsSection(playlist_id=self.card.card_id),
                 # Chapters/Items section
                 self._render_chapters_section(chapters),
             ),
@@ -150,14 +150,14 @@ class PlaylistDetailRefactored(Component):
             d.Button(
                 id="edit-toggle-btn",
                 classes="inline-flex items-center justify-center px-6 py-2 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors",
-                hx_get=f"/playlists/{self.card.cardId}/toggle-edit-mode?enable=true",
+                hx_get=f"/playlists/{self.card.card_id}/toggle-edit-mode?enable=true",
                 hx_target="#edit-controls-container",
                 hx_swap="innerHTML",
             )("✏️ Edit"),
             # Upload button - loads upload modal via HTMX
             d.Button(
                 classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",
-                hx_get=f"/playlists/{self.card.cardId}/upload-modal",
+                hx_get=f"/playlists/{self.card.card_id}/upload-modal",
                 hx_target="#upload-modal-container",
                 hx_swap="innerHTML",
                 **{"hx-on::after-request": "removeClass('upload-modal-container', 'hidden')"},
@@ -165,14 +165,14 @@ class PlaylistDetailRefactored(Component):
             # Change cover - would load cover selection modal
             d.Button(
                 classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",
-                hx_get=f"/playlists/{self.card.cardId}/cover-modal",
+                hx_get=f"/playlists/{self.card.card_id}/cover-modal",
                 hx_target="body",
                 hx_swap="beforeend",
             )("🖼️ Change Cover"),
             # Display JSON - loads JSON modal via HTMX
             d.Button(
                 classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",
-                hx_get=f"/playlists/{self.card.cardId}/json-modal",
+                hx_get=f"/playlists/{self.card.card_id}/json-modal",
                 hx_target="#json-modal-container",
                 hx_swap="innerHTML",
             )("📋 Display JSON"),
@@ -210,7 +210,7 @@ class PlaylistDetailRefactored(Component):
                     ChapterItem(
                         chapter=chapter,
                         index=i,
-                        card_id=self.card.cardId,
+                        card_id=self.card.card_id,
                         playlist_id=self.playlist_id,
                         is_new=str(i) in self.new_chapters,
                     )

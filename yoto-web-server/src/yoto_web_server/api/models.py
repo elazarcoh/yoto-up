@@ -31,13 +31,13 @@ class BaseModel(_BaseModel):
 class Ambient(BaseModel):
     """Ambient display settings."""
 
-    defaultTrackDisplay: str | None = None
+    default_track_display: str | None = Field(None, alias="defaultTrackDisplay")
 
 
 class TrackDisplay(BaseModel):
     """Track display icon configuration."""
 
-    icon16x16: str | None = None
+    icon_16x16: str | None = Field(None, alias="icon16x16")
 
 
 class Track(BaseModel):
@@ -52,25 +52,25 @@ class Track(BaseModel):
     """
 
     title: str
-    trackUrl: str
+    track_url: str = Field(..., alias="trackUrl")
     key: str
     format: str | None = None
     uid: str | None = None
     type: Literal["audio", "stream"]
     display: TrackDisplay | None = None
-    overlayLabelOverride: str | None = None
-    overlayLabel: str | None = None
+    overlay_label_override: str | None = Field(None, alias="overlayLabelOverride")
+    overlay_label: str | None = Field(None, alias="overlayLabel")
     duration: float | None = None
-    fileSize: float | None = None
+    file_size: float | None = Field(None, alias="fileSize")
     channels: Literal["stereo", "mono", 1, 2] | None = None
     ambient: Ambient | None = None
-    hasStreams: bool | None = None
+    has_streams: bool | None = Field(None, alias="hasStreams")
 
 
 class ChapterDisplay(BaseModel):
     """Chapter display icon configuration."""
 
-    icon16x16: str | None = None
+    icon_16x16: str | None = Field(None, alias="icon16x16")
 
 
 class Chapter(BaseModel):
@@ -78,18 +78,18 @@ class Chapter(BaseModel):
 
     key: str
     title: str
-    overlayLabel: str | None = None
-    overlayLabelOverride: str | None = None
+    overlay_label: str | None = Field(None, alias="overlayLabel")
+    overlay_label_override: str | None = Field(None, alias="overlayLabelOverride")
     tracks: list[Track]
-    defaultTrackDisplay: str | None = None
-    defaultTrackAmbient: str | None = None
+    default_track_display: str | None = Field(None, alias="defaultTrackDisplay")
+    default_track_ambient: str | None = Field(None, alias="defaultTrackAmbient")
     duration: float | None = None
-    fileSize: float | None = None
+    file_size: float | None = Field(None, alias="fileSize")
     display: ChapterDisplay | None = None
     hidden: bool | None = None
-    hasStreams: bool | None = None
+    has_streams: bool | None = Field(None, alias="hasStreams")
     ambient: Ambient | None = None
-    availableFrom: str | None = None
+    available_from: str | None = Field(None, alias="availableFrom")
 
 
 # =============================================================================
@@ -101,37 +101,37 @@ class CardStatus(BaseModel):
     """Card status information."""
 
     name: Literal["new", "inprogress", "complete", "live", "archived"]
-    updatedAt: str | None = None
+    updated_at: str | None = Field(None, alias="updatedAt")
 
 
 class CardCover(BaseModel):
     """Card cover image information."""
 
-    imageL: str | None = None
+    image_l: str | None = Field(None, alias="imageL")
 
 
 class CardMedia(BaseModel):
     """Card media information."""
 
     duration: float | None = None
-    fileSize: float | None = None
-    hasStreams: bool | None = None
+    file_size: float | None = Field(None, alias="fileSize")
+    has_streams: bool | None = Field(None, alias="hasStreams")
 
 
 class CardConfig(BaseModel):
     """Card playback configuration."""
 
     autoadvance: str | None = None
-    resumeTimeout: int | None = None
-    systemActivity: bool | None = None
-    trackNumberOverlayTimeout: int | None = None
+    resume_timeout: int | None = Field(None, alias="resumeTimeout")
+    system_activity: bool | None = Field(None, alias="systemActivity")
+    track_number_overlay_timeout: int | None = Field(None, alias="trackNumberOverlayTimeout")
 
 
 class CardMetadata(BaseModel):
     """Card metadata information."""
 
     accent: str | None = None
-    addToFamilyLibrary: bool | None = None
+    add_to_family_library: bool | None = Field(None, alias="addToFamilyLibrary")
     author: str | None = None
     category: (
         Literal["", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"]
@@ -142,21 +142,21 @@ class CardMetadata(BaseModel):
     description: str | None = None
     genre: list[str] | None = None
     languages: list[str] | None = None
-    maxAge: int | None = None
+    max_age: int | None = Field(None, alias="maxAge")
     media: CardMedia | None = None
-    minAge: int | None = None
-    musicType: list[str] | None = None
+    min_age: int | None = Field(None, alias="minAge")
+    music_type: list[str] | None = Field(None, alias="musicType")
     note: str | None = None
     order: str | None = None
-    audioPreviewUrl: str | None = None
-    readBy: str | None = None
+    audio_preview_url: str | None = Field(None, alias="audioPreviewUrl")
+    read_by: str | None = Field(None, alias="readBy")
     share: bool | None = None
     status: CardStatus | None = None
     tags: list[str] | None = None
-    feedUrl: str | None = None
-    numEpisodes: int | None = None
-    playbackDirection: Literal["DESC", "ASC"] | None = None
-    previewAudio: str = ""
+    feed_url: str | None = Field(None, alias="feedUrl")
+    num_episodes: int | None = Field(None, alias="numEpisodes")
+    playback_direction: Literal["DESC", "ASC"] | None = Field(None, alias="playbackDirection")
+    preview_audio: str = Field("", alias="previewAudio")
     hidden: bool = False
 
 
@@ -166,7 +166,7 @@ class CardContent(BaseModel):
     activity: str | None = None
     chapters: list[Chapter] | None = None
     config: CardConfig | None = None
-    playbackType: Literal["linear", "interactive"] | None = None
+    playback_type: Literal["linear", "interactive"] | None = Field(None, alias="playbackType")
     version: str | None = None
     hidden: bool = False
 
@@ -174,17 +174,17 @@ class CardContent(BaseModel):
 class Card(BaseModel):
     """Represents a Yoto card (playlist)."""
 
-    cardId: str | None = None
+    card_id: str | None = Field(None, alias="cardId")
     title: str
     metadata: CardMetadata | None = None
     content: CardContent | None = None
     tags: list[str] | None = None
     slug: str | None = None
     deleted: bool = False
-    createdAt: str | None = None
-    createdByClientId: str | None = None
-    updatedAt: str | None = None
-    userId: str | None = None
+    created_at: str | None = Field(None, alias="createdAt")
+    created_by_client_id: str | None = Field(None, alias="createdByClientId")
+    updated_at: str | None = Field(None, alias="updatedAt")
+    user_id: str | None = Field(None, alias="userId")
 
 
 # =============================================================================
@@ -195,14 +195,14 @@ class Card(BaseModel):
 class Device(BaseModel):
     """Represents a Yoto device."""
 
-    deviceId: str
+    device_id: str = Field(..., alias="deviceId")
     name: str
     description: str
     online: bool
-    releaseChannel: str
-    deviceType: str
-    deviceFamily: str
-    deviceGroup: str
+    release_channel: str = Field(..., alias="releaseChannel")
+    device_type: str = Field(..., alias="deviceType")
+    device_family: str = Field(..., alias="deviceFamily")
+    device_group: str = Field(..., alias="deviceGroup")
 
 
 class CardInsertionState(int, Enum):
@@ -286,7 +286,7 @@ class ConfigAlarms(BaseModel):
         if isinstance(data, dict):
             return data
         parts = data.split(",")
-        parts_dict = {idx: part for idx, part in enumerate(parts)}
+        parts_dict = dict(enumerate(parts))
 
         weekdays_part = parts_dict.get(0, "0000000")
         weekdays: dict[Day, bool] = {day: weekdays_part[idx] == "1" for idx, day in enumerate(DAYS)}
@@ -480,8 +480,8 @@ class TranscodedAudioResponse(BaseModel):
 class CoverImageData(BaseModel):
     """Cover image data from upload response."""
 
-    mediaId: str
-    mediaUrl: str
+    media_id: str = Field(..., alias="mediaId")
+    media_url: str = Field(..., alias="mediaUrl")
 
 
 class CoverImageUploadResponse(BaseModel):
@@ -493,7 +493,7 @@ class CoverImageUploadResponse(BaseModel):
 class IconUploadResponse(BaseModel):
     """Response from icon upload."""
 
-    mediaId: str = Field(..., description="Media ID for the uploaded icon")
+    media_id: str = Field(..., alias="mediaId", description="Media ID for the uploaded icon")
     url: str = Field(..., description="URL to the uploaded icon")
 
 
@@ -512,24 +512,24 @@ class CoverType(str, Enum):
 class DisplayIcon(BaseModel):
     """Represents a public icon from the Yoto API manifest."""
 
-    createdAt: str = Field(description="ISO 8601 timestamp of creation")
-    displayIconId: str = Field(description="Yoto ID for this display icon")
-    mediaId: str = Field(description="Media ID used to fetch the icon")
+    created_at: str = Field(alias="createdAt", description="ISO 8601 timestamp of creation")
+    display_icon_id: str = Field(alias="displayIconId", description="Yoto ID for this display icon")
+    media_id: str = Field(alias="mediaId", description="Media ID used to fetch the icon")
     new: bool | None = Field(None, description="Whether this is a new icon")
     public: bool = Field(description="Whether this icon is publicly available")
-    publicTags: list[str] | None = Field(
-        default_factory=list, description="Tags for public discovery"
+    public_tags: list[str] | None = Field(
+        default_factory=list, alias="publicTags", description="Tags for public discovery"
     )
     title: str | None = Field(default=None, description="Human-readable title/name")
     url: str = Field(description="Direct URL to the icon image")
-    userId: str = Field(description="User ID of the icon owner")
+    user_id: str = Field(alias="userId", description="User ID of the icon owner")
 
 
 class DisplayIconManifest(BaseModel):
     """Container for the list of public display icons from Yoto API."""
 
-    displayIcons: list[DisplayIcon] = Field(
-        default_factory=list, description="List of all public icons"
+    display_icons: list[DisplayIcon] = Field(
+        default_factory=list, alias="displayIcons", description="List of all public icons"
     )
 
 

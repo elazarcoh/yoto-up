@@ -327,7 +327,7 @@ class UploadProcessingService:
             track = Track(
                 title=title,
                 key="0",  # Will be set later
-                trackUrl=f"yoto:#{transcoded.transcode.transcoded_sha256}",
+                track_url=f"yoto:#{transcoded.transcode.transcoded_sha256}",
                 type="audio",
                 format=transcoded_info.format if transcoded_info else None,
                 duration=transcoded_info.duration

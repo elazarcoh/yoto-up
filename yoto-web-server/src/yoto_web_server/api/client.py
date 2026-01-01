@@ -39,6 +39,7 @@ from yoto_web_server.api.models import (
     CoverType,
     Device,
     DeviceConfig,
+    DeviceConfigUpdate,
     DeviceStatus,
     DisplayIconManifest,
     IconUploadResponse,
@@ -397,7 +398,7 @@ class YotoApiClient:
         Returns:
             Created Card object
         """
-        if card.cardId:
+        if card.card_id:
             raise YotoValidationError("Card ID should not be set for creation")
         return await self._create_or_update_card(card)
 
@@ -411,7 +412,7 @@ class YotoApiClient:
         Returns:
             Updated Card object
         """
-        if not card.cardId:
+        if not card.card_id:
             raise YotoValidationError("Card ID is required for update")
         return await self._create_or_update_card(card)
 
@@ -531,7 +532,9 @@ class YotoApiClient:
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(poll_interval)
                 else:
-                    raise YotoApiError(f"Transcoding timeout after {max_attempts} attempts")
+                    raise YotoApiError(
+                        f"Transcoding timeout after {max_attempts} attempts"
+                    ) from None
 
         raise YotoApiError("Transcoding failed")
 
@@ -681,6 +684,18 @@ class YotoApiClient:
         """
         response = await self._request("GET", f"/device-v2/{device_id}/config")
         return DeviceConfig.model_validate(response.json())
+
+    async def update_device_config(
+        self,
+        device_id: str,
+        config: DeviceConfigUpdate,
+    ) -> None:
+        response = await self._request(
+            "PUT",
+            f"/device-v2/{device_id}/config",
+            json=config.model_dump(exclude_none=True, by_alias=True),
+        )
+        response.raise_for_status()
 
     # ========================================================================
     # Icons

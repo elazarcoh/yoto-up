@@ -297,7 +297,7 @@ class IconService:
         # Will be lazily loaded when first accessed
         from yoto_web_server.api.models import DisplayIconManifest
 
-        self._public_manifest = DisplayIconManifest(displayIcons=[])
+        self._public_manifest = DisplayIconManifest(display_icons=[])
         self._public_manifest_by_media_id = {}
 
         # Load provisioning map
@@ -340,10 +340,10 @@ class IconService:
             self._public_manifest = icons
 
             self._public_manifest_by_media_id = {
-                icon.mediaId: icon for icon in self._public_manifest.displayIcons
+                icon.media_id: icon for icon in self._public_manifest.display_icons
             }
 
-            logger.info(f"Loaded public manifest: {len(self._public_manifest.displayIcons)} icons")
+            logger.info(f"Loaded public manifest: {len(self._public_manifest.display_icons)} icons")
             return True
 
         except Exception as e:
@@ -373,10 +373,10 @@ class IconService:
             self._user_manifest = icons
 
             self._user_manifest_by_media_id = {
-                icon.mediaId: icon for icon in self._user_manifest.displayIcons
+                icon.media_id: icon for icon in self._user_manifest.display_icons
             }
 
-            logger.info(f"Loaded user manifest: {len(self._user_manifest.displayIcons)} icons")
+            logger.info(f"Loaded user manifest: {len(self._user_manifest.display_icons)} icons")
             return True
 
         except Exception as e:
@@ -599,7 +599,7 @@ class IconService:
         if self._search_service is not None:
             return  # Already initialized
 
-        official_icons = self._public_manifest.displayIcons if self._public_manifest else []
+        official_icons = self._public_manifest.display_icons if self._public_manifest else []
         self._search_service = IconSearchService(
             official_manifest=official_icons,
             yotoicons_cache_dir=self._yotoicons_dir,
@@ -653,7 +653,7 @@ class IconService:
 
         # User icons
         if IconRetrieveSource.USER in sources:
-            icons = self._user_manifest.displayIcons if self._user_manifest else []
+            icons = self._user_manifest.display_icons if self._user_manifest else []
             total = len(icons)
             start_idx = (page - 1) * per_page
             end_idx = start_idx + per_page
@@ -709,14 +709,14 @@ class IconService:
             display_icons = []
             for res in results:
                 icon = DisplayIcon(
-                    createdAt="",  # Not available
-                    displayIconId=f"yotoicons:{res.id}",
-                    mediaId=f"yotoicons:{res.id}",
+                    created_at="",  # Not available
+                    display_icon_id=f"yotoicons:{res.id}",
+                    media_id=f"yotoicons:{res.id}",
                     public=True,
-                    publicTags=res.tags,
+                    public_tags=res.tags,
                     title=f"{res.category} by {res.author}",
                     url=res.img_url,  # Will be cached lazily when requested
-                    userId="yotoicons",
+                    user_id="yotoicons",
                     new=False,
                 )
                 display_icons.append(icon)
@@ -781,7 +781,7 @@ class IconService:
                 )
 
                 logger.debug(f"Upload response received: {upload_resp!r}")
-                official_media_id = upload_resp.mediaId
+                official_media_id = upload_resp.media_id
                 logger.debug(
                     f"Upload response mediaId: {official_media_id!r} (type: {type(official_media_id).__name__}, length: {len(official_media_id) if official_media_id else 'N/A'})"
                 )
@@ -843,10 +843,10 @@ class IconService:
                 id=media_id,
                 path=str(file_path),
                 source=source,
-                name=icon_def.title or icon_def.displayIconId or media_id,
+                name=icon_def.title or icon_def.display_icon_id or media_id,
                 data=data,
-                tags=icon_def.publicTags or [],
-                keywords=icon_def.publicTags or [],
+                tags=icon_def.public_tags or [],
+                keywords=icon_def.public_tags or [],
             )
 
             with file_path.open("w") as f:
