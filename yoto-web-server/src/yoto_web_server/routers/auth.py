@@ -77,7 +77,6 @@ async def auth_status(
     """Return current authentication status as HTML partial."""
     session_id = get_session_id_from_request(request)
     is_authenticated = session_api_service.is_session_authenticated(session_id)
-
     return render_partial(AuthStatusPartial(is_authenticated=is_authenticated))
 
 
@@ -88,7 +87,8 @@ async def start_oauth_flow(request: Request):
 
     Redirects user to Yoto login page with authorization request.
     """
-    client_id = get_settings().yoto_client_id
+    settings = get_settings()
+    client_id = settings.yoto_client_id
 
     if not client_id:
         return render_partial(
@@ -148,7 +148,8 @@ async def start_device_auth(request: Request):
     Calls the real Yoto OAuth endpoint to request a device code.
     Returns HTML partial with the device code instructions.
     """
-    client_id = get_settings().yoto_client_id
+    settings = get_settings()
+    client_id = settings.yoto_client_id
 
     if not client_id:
         return render_partial(
@@ -236,7 +237,8 @@ async def poll_device_auth(
             )
         )
 
-    client_id = get_settings().yoto_client_id
+    settings = get_settings()
+    client_id = settings.yoto_client_id
 
     try:
         # Call Yoto token endpoint to check if user has authenticated
@@ -395,7 +397,7 @@ async def logout(
     session_id = get_session_id_from_request(request)
 
     if session_id:
-        session_api_service.logout_session(session_id)
+        await session_api_service.logout_session(session_id)
 
     # Create response with redirect
     resp = Response(
@@ -450,6 +452,7 @@ async def oauth_callback(
             logger.error("No authorization code in callback")
             return RedirectResponse(url="/auth/?error=no_code", status_code=302)
 
+        settings = get_settings()
         async with httpx.AsyncClient() as client:
             token_response = await client.post(
                 "https://login.yotoplay.com/oauth/token",
@@ -457,7 +460,7 @@ async def oauth_callback(
                     "grant_type": "authorization_code",
                     "code": code,
                     "redirect_uri": "http://localhost:8000/auth/oauth-callback",
-                    "client_id": get_settings().yoto_client_id,
+                    "client_id": settings.yoto_client_id,
                     "client_secret": os.getenv("YOTO_CLIENT_SECRET", ""),
                 },
             )

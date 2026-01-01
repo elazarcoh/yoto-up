@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import time
 from contextvars import ContextVar
-from typing import Optional
 
 import httpx
 from loguru import logger
@@ -24,10 +23,10 @@ from yoto_web_server.core.config import get_settings
 from yoto_web_server.services.session_service import CookiePayload, SessionService
 
 # Context variable for session ID (set by middleware)
-_session_id_context: ContextVar[Optional[str]] = ContextVar("session_id", default=None)
+_session_id_context: ContextVar[str | None] = ContextVar("session_id", default=None)
 
 
-def get_session_id_context() -> ContextVar[Optional[str]]:
+def get_session_id_context() -> ContextVar[str | None]:
     """Get the session ID context variable."""
     return _session_id_context
 
@@ -60,9 +59,9 @@ class SessionAwareApiService:
             timeout=settings.yoto_api_timeout,
         )
         self._api_clients: dict[str, YotoApiClient] = {}
-        self._current_session_id: Optional[str] = None
+        self._current_session_id: str | None = None
 
-    def _get_session_id(self, session_id: Optional[str] = None) -> str:
+    def _get_session_id(self, session_id: str | None = None) -> str:
         """
         Get session ID from parameter, current instance, or context variable.
 
@@ -298,6 +297,40 @@ class SessionAwareApiService:
 
         return new_cookie_payload
 
+    async def create_session_from_tokens(
+        self,
+        access_token: str,
+        refresh_token: str,
+        expires_in: int = 600,  # Default 10 minutes
+    ) -> tuple[str, CookiePayload]:
+        """
+        Create a new session from OAuth tokens.
+
+        Called after successful OAuth flow completion.
+
+        Args:
+            access_token: OAuth access token
+            refresh_token: OAuth refresh token
+            expires_in: Access token TTL in seconds
+
+        Returns:
+            tuple of (session_id, cookie_payload)
+        """
+        current_time = time.time()
+        access_expiry = current_time + expires_in
+        # Refresh token valid for 30 days
+        refresh_expiry = current_time + (30 * 24 * 60 * 60)
+
+        session_id, cookie_payload = self.session_service.create_session(
+            access_token=access_token,
+            access_token_expiry=access_expiry,
+            refresh_token=refresh_token,
+            refresh_token_expiry=refresh_expiry,
+        )
+
+        logger.info(f"Created session from OAuth tokens: {session_id[:8]}...")
+        return session_id, cookie_payload
+
     async def logout_session(self, session_id: str) -> None:
         """
         Logout a session - removes from memory.
@@ -309,6 +342,26 @@ class SessionAwareApiService:
         self.session_service.delete_session(session_id)
         logger.info(f"Logged out session: {session_id[:8]}...")
 
+    def is_session_authenticated(self, session_id: str | None) -> bool:
+        """
+        Check if a session is authenticated.
+
+        Args:
+            session_id: Session ID to check
+
+        Returns:
+            True if session exists and has valid access token
+        """
+        if not session_id:
+            return False
+
+        session = self.session_service.get_session(session_id)
+        if not session:
+            return False
+
+        # Check if access token expired
+        return not session.is_access_token_expired()
+
     async def cleanup_expired_sessions(self) -> int:
         """
         Clean up expired sessions.
@@ -317,20 +370,3 @@ class SessionAwareApiService:
             Number of sessions cleaned up
         """
         return await self.session_service.cleanup_expired_sessions()
-
-    def __getattr__(self, name: str):
-        """
-        Proxy attribute access to the underlying YotoApiClient.
-
-        This allows the service to be used as if it were the client directly,
-        automatically handling session resolution.
-        """
-
-        async def wrapper(*args, **kwargs):
-            client = await self.get_client()
-            attr = getattr(client, name)
-            if callable(attr):
-                return await attr(*args, **kwargs)
-            return attr
-
-        return wrapper

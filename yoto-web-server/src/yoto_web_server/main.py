@@ -20,7 +20,7 @@ from pydom.element import Element
 
 from yoto_web_server.api.exceptions import YotoAuthError
 from yoto_web_server.container import Container
-from yoto_web_server.dependencies import AuthenticationError
+from yoto_web_server.dependencies import AuthenticationError, YotoApiDep
 from yoto_web_server.logging_config import configure_logging
 from yoto_web_server.middleware.session_middleware import SessionMiddleware
 from yoto_web_server.routers import auth, devices, icons, playlists
@@ -184,16 +184,11 @@ app.include_router(devices.router, prefix="/devices", tags=["Devices"])
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home(request: Request) -> str:
+async def home(request: Request, *, client: YotoApiDep) -> str:
     """Render the home page."""
-    from yoto_web_server.middleware.session_middleware import get_session_id_from_request
-
-    container: Container = request.app.state.container
-    session_api_service = container.session_aware_api_service()
 
     # Check session-based authentication
-    session_id = get_session_id_from_request(request)
-    is_authenticated = session_api_service.is_session_authenticated(session_id)
+    is_authenticated = client.is_authenticated()
 
     return render_page(
         title="Yoto Up",

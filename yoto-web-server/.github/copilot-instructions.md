@@ -36,7 +36,14 @@ This is a standalone FastAPI web server for managing Yoto cards and playlists.
 
 ### Services
 - **Session Management:** `SessionService` handles encrypted cookies.
-- **API Client:** `SessionAwareApiService` wraps external Yoto API calls with auth context.
+- **API Client:** `YotoApiClient` wraps external Yoto API calls with auth context. Get it like this:
+  ```python
+  @router.get("/some-endpoint")
+  @inject
+  async def some_endpoint(
+      client: YotoApiDep
+  ): ...
+  ```
 - **Background Tasks:** `UploadProcessingService` handles long-running audio processing.
 - **Audio:** `AudioProcessorService` uses `ffmpeg` and `pydub` for normalization.
 
