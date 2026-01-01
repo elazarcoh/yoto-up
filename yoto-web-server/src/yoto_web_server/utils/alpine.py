@@ -1,5 +1,5 @@
-from typing import Any, overload
 import json
+from typing import Any, overload
 
 
 class WithValue:
@@ -279,3 +279,12 @@ def xmodel(value: str | None = None):
     if value is not None:
         return WithValue("x-model", value)
     return Xmodel()
+
+
+# =======================================================================
+# Xif Attribute Builder
+# =======================================================================
+
+
+def xif(condition: str) -> WithValue:
+    return WithValue("x-if", condition)

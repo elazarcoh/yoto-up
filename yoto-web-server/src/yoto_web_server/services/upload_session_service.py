@@ -6,16 +6,16 @@ Tracks multiple concurrent upload sessions with their files and processing statu
 """
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
 
 from yoto_web_server.models import (
+    FileUploadStatus,
     UploadFileStatus,
     UploadSession,
     UploadSessionInitRequest,
-    UploadStatus,
 )
 
 
@@ -110,7 +110,7 @@ class UploadSessionService:
             file_id=file_id,
             filename=filename,
             size_bytes=size_bytes,
-            status=UploadStatus.PENDING,
+            status=FileUploadStatus.PENDING,
         )
 
         session.files.append(file_status)
@@ -122,7 +122,7 @@ class UploadSessionService:
         session_id: str,
         file_id: str,
         progress: float,
-        status: UploadStatus = UploadStatus.UPLOADING,
+        status: FileUploadStatus,
     ) -> bool:
         """
         Update progress of a file upload.
@@ -145,7 +145,6 @@ class UploadSessionService:
             if file_status.file_id == file_id:
                 file_status.progress = min(100.0, max(0.0, progress))
                 file_status.status = status
-                self._update_session_progress(session)
                 return True
 
         return False
@@ -174,11 +173,10 @@ class UploadSessionService:
 
         for file_status in session.files:
             if file_status.file_id == file_id:
-                file_status.status = UploadStatus.QUEUED
+                file_status.status = FileUploadStatus.QUEUED
                 file_status.progress = 100.0
                 file_status.temp_path = temp_path
-                file_status.uploaded_at = datetime.utcnow()
-                self._update_session_progress(session)
+                file_status.uploaded_at = datetime.now(UTC)
                 logger.info(f"File {file_id} uploaded successfully to {temp_path}")
                 return True
 
@@ -208,9 +206,25 @@ class UploadSessionService:
 
         for file_status in session.files:
             if file_status.file_id == file_id:
-                file_status.status = UploadStatus.PROCESSING
-                file_status.processing_info["current_step"] = processing_step
-                self._update_session_progress(session)
+                file_status.status = FileUploadStatus.PROCESSING
+                file_status.current_step = processing_step
+                return True
+
+        return False
+
+    def mark_file_yoto_uploading(
+        self,
+        session_id: str,
+        file_id: str,
+    ) -> bool:
+        if session_id not in self._sessions:
+            return False
+
+        session = self._sessions[session_id]
+
+        for file_status in session.files:
+            if file_status.file_id == file_id:
+                file_status.status = FileUploadStatus.YOTO_UPLOADING
                 return True
 
         return False
@@ -237,9 +251,8 @@ class UploadSessionService:
 
         for file_status in session.files:
             if file_status.file_id == file_id:
-                file_status.status = UploadStatus.DONE
+                file_status.status = FileUploadStatus.DONE
                 file_status.progress = 100.0
-                self._update_session_progress(session)
                 logger.info(f"File {file_id} processing complete")
                 return True
 
@@ -269,9 +282,8 @@ class UploadSessionService:
 
         for file_status in session.files:
             if file_status.file_id == file_id:
-                file_status.status = UploadStatus.ERROR
+                file_status.status = FileUploadStatus.ERROR
                 file_status.error = error_message
-                self._update_session_progress(session)
                 logger.error(f"File {file_id} error: {error_message}")
                 return True
 
@@ -306,10 +318,8 @@ class UploadSessionService:
         sessions = []
         for session_id in session_ids:
             session = self._sessions.get(session_id)
-            if session:
-                # Include done sessions by default, filter only if requested
-                if include_done or session.overall_status != UploadStatus.DONE:
-                    sessions.append(session)
+            if session and (include_done or session.overall_status != FileUploadStatus.DONE):
+                sessions.append(session)
         return sessions
 
     def delete_session(self, session_id: str) -> bool:
@@ -348,39 +358,14 @@ class UploadSessionService:
         logger.info(f"Deleted upload session {session_id}")
         return True
 
-    def _update_session_progress(self, session: UploadSession) -> None:
-        """
-        Update overall session progress based on file statuses.
-
-        Args:
-            session: The session to update
-        """
-        if not session.files:
-            session.overall_progress = 0.0
-            return
-
-        # Calculate overall progress as average of file progress
-        total_progress = sum(f.progress for f in session.files)
-        session.overall_progress = total_progress / len(session.files)
-
-        # Determine overall status
-        statuses = [f.status for f in session.files]
-
-        if UploadStatus.ERROR in statuses:
-            session.overall_status = UploadStatus.ERROR
-        elif UploadStatus.PROCESSING in statuses:
-            session.overall_status = UploadStatus.PROCESSING
-        elif UploadStatus.UPLOADING in statuses:
-            session.overall_status = UploadStatus.UPLOADING
-        elif UploadStatus.QUEUED in statuses:
-            session.overall_status = UploadStatus.QUEUED
-        elif all(status == UploadStatus.DONE for status in statuses):
-            session.overall_status = UploadStatus.DONE
-        else:
-            session.overall_status = UploadStatus.PENDING
-
     def update_new_chapter_ids(self, session_id: str, chapter_ids: list[str]) -> None:
         """Update the list of new chapter IDs for a session."""
         session = self.get_session(session_id)
         if session:
             session.new_chapter_ids = chapter_ids
+
+    def mark_session_done(self, session_id: str) -> None:
+        """Mark the session as done."""
+        session = self.get_session(session_id)
+        if session:
+            session.session_done = True

@@ -6,7 +6,7 @@
             "type": "debugpy",
             "request": "launch",
             "module": "yoto_web_server.cli",
-            "args": ["server","--reload", "--debug"],
+            "args": ["serve","--reload", "--debug", "--no-browser"],
             "cwd": "${workspaceFolder}",
             "env": {
                 "YOTO_WEB_DEBUG": "true"

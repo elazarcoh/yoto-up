@@ -20,7 +20,12 @@ from pydantic import ConfigDict, Field, model_validator
 class BaseModel(_BaseModel):
     """Base model with common configuration."""
 
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        validate_by_alias=True,
+        validate_by_name=True,
+        serialize_by_alias=True,
+        extra="ignore",
+    )
 
 
 # =============================================================================
@@ -31,13 +36,13 @@ class BaseModel(_BaseModel):
 class Ambient(BaseModel):
     """Ambient display settings."""
 
-    default_track_display: str | None = Field(None, alias="defaultTrackDisplay")
+    default_track_display: str | None = Field(default=None, alias="defaultTrackDisplay")
 
 
 class TrackDisplay(BaseModel):
     """Track display icon configuration."""
 
-    icon_16x16: str | None = Field(None, alias="icon16x16")
+    icon_16x16: str | None = Field(default=None, alias="icon16x16")
 
 
 class Track(BaseModel):
@@ -52,25 +57,25 @@ class Track(BaseModel):
     """
 
     title: str
-    track_url: str = Field(..., alias="trackUrl")
+    track_url: str = Field(alias="trackUrl")
     key: str
     format: str | None = None
     uid: str | None = None
     type: Literal["audio", "stream"]
     display: TrackDisplay | None = None
-    overlay_label_override: str | None = Field(None, alias="overlayLabelOverride")
-    overlay_label: str | None = Field(None, alias="overlayLabel")
+    overlay_label_override: str | None = Field(default=None, alias="overlayLabelOverride")
+    overlay_label: str | None = Field(default=None, alias="overlayLabel")
     duration: float | None = None
-    file_size: float | None = Field(None, alias="fileSize")
+    file_size: float | None = Field(default=None, alias="fileSize")
     channels: Literal["stereo", "mono", 1, 2] | None = None
     ambient: Ambient | None = None
-    has_streams: bool | None = Field(None, alias="hasStreams")
+    has_streams: bool | None = Field(default=None, alias="hasStreams")
 
 
 class ChapterDisplay(BaseModel):
     """Chapter display icon configuration."""
 
-    icon_16x16: str | None = Field(None, alias="icon16x16")
+    icon_16x16: str | None = Field(default=None, alias="icon16x16")
 
 
 class Chapter(BaseModel):
@@ -78,18 +83,18 @@ class Chapter(BaseModel):
 
     key: str
     title: str
-    overlay_label: str | None = Field(None, alias="overlayLabel")
-    overlay_label_override: str | None = Field(None, alias="overlayLabelOverride")
+    overlay_label: str | None = Field(default=None, alias="overlayLabel")
+    overlay_label_override: str | None = Field(default=None, alias="overlayLabelOverride")
     tracks: list[Track]
-    default_track_display: str | None = Field(None, alias="defaultTrackDisplay")
-    default_track_ambient: str | None = Field(None, alias="defaultTrackAmbient")
+    default_track_display: str | None = Field(default=None, alias="defaultTrackDisplay")
+    default_track_ambient: str | None = Field(default=None, alias="defaultTrackAmbient")
     duration: float | None = None
-    file_size: float | None = Field(None, alias="fileSize")
+    file_size: float | None = Field(default=None, alias="fileSize")
     display: ChapterDisplay | None = None
     hidden: bool | None = None
-    has_streams: bool | None = Field(None, alias="hasStreams")
+    has_streams: bool | None = Field(default=None, alias="hasStreams")
     ambient: Ambient | None = None
-    available_from: str | None = Field(None, alias="availableFrom")
+    available_from: str | None = Field(default=None, alias="availableFrom")
 
 
 # =============================================================================
@@ -101,62 +106,77 @@ class CardStatus(BaseModel):
     """Card status information."""
 
     name: Literal["new", "inprogress", "complete", "live", "archived"]
-    updated_at: str | None = Field(None, alias="updatedAt")
+    updated_at: str | None = Field(default=None, alias="updatedAt")
 
 
 class CardCover(BaseModel):
     """Card cover image information."""
 
-    image_l: str | None = Field(None, alias="imageL")
+    image_l: str | None = Field(default=None, alias="imageL")
 
 
 class CardMedia(BaseModel):
     """Card media information."""
 
     duration: float | None = None
-    file_size: float | None = Field(None, alias="fileSize")
-    has_streams: bool | None = Field(None, alias="hasStreams")
+    file_size: float | None = Field(default=None, alias="fileSize")
+    has_streams: bool | None = Field(default=None, alias="hasStreams")
 
 
 class CardConfig(BaseModel):
     """Card playback configuration."""
 
     autoadvance: str | None = None
-    resume_timeout: int | None = Field(None, alias="resumeTimeout")
-    system_activity: bool | None = Field(None, alias="systemActivity")
-    track_number_overlay_timeout: int | None = Field(None, alias="trackNumberOverlayTimeout")
+    resume_timeout: int | None = Field(default=None, alias="resumeTimeout")
+    system_activity: bool | None = Field(default=None, alias="systemActivity")
+    track_number_overlay_timeout: int | None = Field(
+        default=None, alias="trackNumberOverlayTimeout"
+    )
+
+
+class Category(str, Enum):
+    """Card category types."""
+
+    EMPTY = ""
+    STORIES = "stories"
+    MUSIC = "music"
+    RADIO = "radio"
+    PODCAST = "podcast"
+    SFX = "sfx"
+    ACTIVITIES = "activities"
+    ALARMS = "alarms"
+    NONE = "none"
 
 
 class CardMetadata(BaseModel):
     """Card metadata information."""
 
     accent: str | None = None
-    add_to_family_library: bool | None = Field(None, alias="addToFamilyLibrary")
+    add_to_family_library: bool | None = Field(default=None, alias="addToFamilyLibrary")
     author: str | None = None
-    category: (
-        Literal["", "none", "stories", "music", "radio", "podcast", "sfx", "activities", "alarms"]
-        | None
-    ) = None
+    category: Category | None = None
     copyright: str | None = None
     cover: CardCover | None = None
     description: str | None = None
     genre: list[str] | None = None
     languages: list[str] | None = None
-    max_age: int | None = Field(None, alias="maxAge")
+    max_age: int | None = Field(default=None, alias="maxAge")
     media: CardMedia | None = None
-    min_age: int | None = Field(None, alias="minAge")
-    music_type: list[str] | None = Field(None, alias="musicType")
+    min_age: int | None = Field(default=None, alias="minAge")
+    music_type: list[str] | None = Field(default=None, alias="musicType")
     note: str | None = None
     order: str | None = None
-    audio_preview_url: str | None = Field(None, alias="audioPreviewUrl")
-    read_by: str | None = Field(None, alias="readBy")
+    audio_preview_url: str | None = Field(default=None, alias="audioPreviewUrl")
+    read_by: str | None = Field(default=None, alias="readBy")
     share: bool | None = None
     status: CardStatus | None = None
     tags: list[str] | None = None
-    feed_url: str | None = Field(None, alias="feedUrl")
-    num_episodes: int | None = Field(None, alias="numEpisodes")
-    playback_direction: Literal["DESC", "ASC"] | None = Field(None, alias="playbackDirection")
-    preview_audio: str = Field("", alias="previewAudio")
+    feed_url: str | None = Field(default=None, alias="feedUrl")
+    num_episodes: int | None = Field(default=None, alias="numEpisodes")
+    playback_direction: Literal["DESC", "ASC"] | None = Field(
+        default=None, alias="playbackDirection"
+    )
+    preview_audio: str = Field(default="", alias="previewAudio")
     hidden: bool = False
 
 
@@ -166,25 +186,46 @@ class CardContent(BaseModel):
     activity: str | None = None
     chapters: list[Chapter] | None = None
     config: CardConfig | None = None
-    playback_type: Literal["linear", "interactive"] | None = Field(None, alias="playbackType")
+    playback_type: Literal["linear", "interactive"] | None = Field(
+        default=None, alias="playbackType"
+    )
     version: str | None = None
     hidden: bool = False
 
 
-class Card(BaseModel):
+class CardBase(BaseModel):
     """Represents a Yoto card (playlist)."""
 
-    card_id: str | None = Field(None, alias="cardId")
     title: str
     metadata: CardMetadata | None = None
     content: CardContent | None = None
     tags: list[str] | None = None
     slug: str | None = None
     deleted: bool = False
-    created_at: str | None = Field(None, alias="createdAt")
-    created_by_client_id: str | None = Field(None, alias="createdByClientId")
-    updated_at: str | None = Field(None, alias="updatedAt")
-    user_id: str | None = Field(None, alias="userId")
+    created_at: str | None = Field(default=None, alias="createdAt")
+    created_by_client_id: str | None = Field(default=None, alias="createdByClientId")
+    updated_at: str | None = Field(default=None, alias="updatedAt")
+    user_id: str | None = Field(default=None, alias="userId")
+
+
+class NewCardRequest(CardBase):
+    """Request model for creating a new card."""
+
+    card_id: None = Field(default=None, alias="cardId")
+    created_at: None = Field(default=None, alias="createdAt")
+    created_by_client_id: None = Field(default=None, alias="createdByClientId")
+    updated_at: None = Field(default=None, alias="updatedAt")
+    user_id: None = Field(default=None, alias="userId")
+
+
+class Card(CardBase):
+    """Request model for updating an existing card."""
+
+    card_id: str = Field(..., alias="cardId")
+    created_at: str | None = Field(default=None, alias="createdAt")
+    created_by_client_id: str | None = Field(default=None, alias="createdByClientId")
+    updated_at: str | None = Field(default=None, alias="updatedAt")
+    user_id: str | None = Field(default=None, alias="userId")
 
 
 # =============================================================================
@@ -233,33 +274,41 @@ class PowerSource(int, Enum):
 class DeviceStatus(BaseModel):
     """Device status information."""
 
-    active_card: str | None = Field(None, alias="activeCard")
-    ambient_light_sensor_reading: int | None = Field(None, alias="ambientLightSensorReading")
+    active_card: str | None = Field(default=None, alias="activeCard")
+    ambient_light_sensor_reading: int | None = Field(
+        default=None, alias="ambientLightSensorReading"
+    )
     average_download_speed_bytes_second: float | None = Field(
         None, alias="averageDownloadSpeedBytesSecond"
     )
-    battery_level_percentage: float | None = Field(None, alias="batteryLevelPercentage")
-    card_insertion_state: CardInsertionState | None = Field(None, alias="cardInsertionState")
-    day_mode: DayMode | None = Field(None, alias="dayMode")
+    battery_level_percentage: float | None = Field(default=None, alias="batteryLevelPercentage")
+    card_insertion_state: CardInsertionState | None = Field(
+        default=None, alias="cardInsertionState"
+    )
+    day_mode: DayMode | None = Field(default=None, alias="dayMode")
     device_id: str = Field(..., alias="deviceId")
-    free_disk_space_bytes: int | None = Field(None, alias="freeDiskSpaceBytes")
-    is_audio_device_connected: bool | None = Field(None, alias="isAudioDeviceConnected")
-    is_background_download_active: bool | None = Field(None, alias="isBackgroundDownloadActive")
-    is_bluetooth_audio_connected: bool | None = Field(None, alias="isBluetoothAudioConnected")
-    is_charging: bool | None = Field(None, alias="isCharging")
-    is_online: bool | None = Field(None, alias="isOnline")
-    network_ssid: str | None = Field(None, alias="networkSsid")
-    nightlight_mode: str | None = Field(None, alias="nightlightMode")
-    power_source: PowerSource | None = Field(None, alias="powerSource")
-    system_volume_percentage: float | None = Field(None, alias="systemVolumePercentage")
-    temperature_celsius: float | None = Field(None, alias="temperatureCelcius")
-    total_disk_space_bytes: int | None = Field(None, alias="totalDiskSpaceBytes")
-    updated_at: datetime | None = Field(None, alias="updatedAt")
+    free_disk_space_bytes: int | None = Field(default=None, alias="freeDiskSpaceBytes")
+    is_audio_device_connected: bool | None = Field(default=None, alias="isAudioDeviceConnected")
+    is_background_download_active: bool | None = Field(
+        default=None, alias="isBackgroundDownloadActive"
+    )
+    is_bluetooth_audio_connected: bool | None = Field(
+        default=None, alias="isBluetoothAudioConnected"
+    )
+    is_charging: bool | None = Field(default=None, alias="isCharging")
+    is_online: bool | None = Field(default=None, alias="isOnline")
+    network_ssid: str | None = Field(default=None, alias="networkSsid")
+    nightlight_mode: str | None = Field(default=None, alias="nightlightMode")
+    power_source: PowerSource | None = Field(default=None, alias="powerSource")
+    system_volume_percentage: float | None = Field(default=None, alias="systemVolumePercentage")
+    temperature_celsius: float | None = Field(default=None, alias="temperatureCelcius")
+    total_disk_space_bytes: int | None = Field(default=None, alias="totalDiskSpaceBytes")
+    updated_at: datetime | None = Field(default=None, alias="updatedAt")
     uptime: int | None = None
     user_volume_percentage: float = Field(..., alias="userVolumePercentage")
-    utc_offset_seconds: int | None = Field(None, alias="utcOffsetSeconds")
-    utc_time: datetime | None = Field(None, alias="utcTime")
-    wifi_strength: int | None = Field(None, alias="wifiStrength")
+    utc_offset_seconds: int | None = Field(default=None, alias="utcOffsetSeconds")
+    utc_time: datetime | None = Field(default=None, alias="utcTime")
+    wifi_strength: int | None = Field(default=None, alias="wifiStrength")
 
 
 # =============================================================================
@@ -435,7 +484,7 @@ class AudioUploadUrlResponse(BaseModel):
     """Response from audio upload URL request."""
 
     class Upload(BaseModel):
-        upload_url: str | None = Field(None, alias="uploadUrl")
+        upload_url: str | None = Field(default=None, alias="uploadUrl")
         upload_id: str = Field(..., alias="uploadId")
 
     upload: Upload
@@ -459,20 +508,20 @@ class TranscodedAudioResponse(BaseModel):
             bitrate: int
             metadata: dict[str, Any]
             input_format: str = Field(..., alias="inputFormat")
-            file_size: int | None = Field(None, alias="fileSize")
+            file_size: int | None = Field(default=None, alias="fileSize")
 
         upload_id: str = Field(..., alias="uploadId")
         upload_filename: str = Field(..., alias="uploadFilename")
         upload_sha256: str = Field(..., alias="uploadSha256")
         created_at: datetime = Field(..., alias="createdAt")
         options: dict[str, Any]
-        started_at: datetime | None = Field(None, alias="startedAt")
+        started_at: datetime | None = Field(default=None, alias="startedAt")
         progress: Progress | None = None
         ffmpeg: dict[str, Any] | None = None
-        transcoded_at: datetime | None = Field(None, alias="transcodedAt")
-        transcoded_info: TranscodeInfo | None = Field(None, alias="transcodedInfo")
-        transcoded_sha256: str | None = Field(None, alias="transcodedSha256")
-        upload_info: TranscodeInfo | None = Field(None, alias="uploadInfo")
+        transcoded_at: datetime | None = Field(default=None, alias="transcodedAt")
+        transcoded_info: TranscodeInfo | None = Field(default=None, alias="transcodedInfo")
+        transcoded_sha256: str | None = Field(default=None, alias="transcodedSha256")
+        upload_info: TranscodeInfo | None = Field(default=None, alias="uploadInfo")
 
     transcode: Transcode
 
@@ -515,7 +564,7 @@ class DisplayIcon(BaseModel):
     created_at: str = Field(alias="createdAt", description="ISO 8601 timestamp of creation")
     display_icon_id: str = Field(alias="displayIconId", description="Yoto ID for this display icon")
     media_id: str = Field(alias="mediaId", description="Media ID used to fetch the icon")
-    new: bool | None = Field(None, description="Whether this is a new icon")
+    new: bool | None = Field(default=None, description="Whether this is a new icon")
     public: bool = Field(description="Whether this icon is publicly available")
     public_tags: list[str] | None = Field(
         default_factory=list, alias="publicTags", description="Tags for public discovery"
@@ -563,9 +612,9 @@ class DeviceConfigUpdate(BaseModel):
         day_time: Annotated[str | None, Field(alias="dayTime")] = None
         max_volume_limit: Annotated[str | None, Field(alias="maxVolumeLimit")] = None
         ambient_colour: Annotated[str | None, Field(alias="ambientColour")] = None
-        day_display_brightness: Annotated[str | None, Field(None, alias="dayDisplayBrightness")] = (
-            None
-        )
+        day_display_brightness: Annotated[
+            str | None, Field(default=None, alias="dayDisplayBrightness")
+        ] = None
         day_yoto_daily: Annotated[str | None, Field(alias="dayYotoDaily")] = None
         day_yoto_radio: Annotated[str | None, Field(alias="dayYotoRadio")] = None
         day_sounds_off: Annotated[str | None, Field(alias="daySoundsOff")] = None
@@ -573,15 +622,15 @@ class DeviceConfigUpdate(BaseModel):
         night_max_volume_limit: Annotated[str | None, Field(alias="nightMaxVolumeLimit")] = None
         night_ambient_colour: Annotated[str | None, Field(alias="nightAmbientColour")] = None
         night_display_brightness: Annotated[
-            str | None, Field(None, alias="nightDisplayBrightness")
+            str | None, Field(default=None, alias="nightDisplayBrightness")
         ] = None
         night_yoto_daily: Annotated[str | None, Field(alias="nightYotoDaily")] = None
         night_yoto_radio: Annotated[str | None, Field(alias="nightYotoRadio")] = None
         night_sounds_off: Annotated[str | None, Field(alias="nightSoundsOff")] = None
         hour_format: Annotated[str | None, Field(alias="hourFormat")] = None
-        display_dim_brightness: Annotated[str | None, Field(None, alias="displayDimBrightness")] = (
-            None
-        )
+        display_dim_brightness: Annotated[
+            str | None, Field(default=None, alias="displayDimBrightness")
+        ] = None
         system_volume: Annotated[str | None, Field(alias="systemVolume")] = None
         volume_level: Annotated[str | None, Field(alias="volumeLevel")] = None
         clock_face: Annotated[str | None, Field(alias="clockFace")] = None

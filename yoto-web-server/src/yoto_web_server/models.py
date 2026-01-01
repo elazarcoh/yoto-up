@@ -14,30 +14,27 @@ from pydantic import BaseModel, Field
 # Upload Models
 
 
-class UploadStatus(str, Enum):
+class FileUploadStatus(str, Enum):
     """Upload job status."""
 
     PENDING = "pending"
     QUEUED = "queued"
     UPLOADING = "uploading"
     PROCESSING = "processing"
+    YOTO_UPLOADING = "yoto_uploading"
     DONE = "done"
     ERROR = "error"
 
 
-class UploadJob(BaseModel):
-    """Represents an upload job."""
+class SessionUploadStatus(str, Enum):
+    """Session job status."""
 
-    id: str
-    filename: str
-    status: UploadStatus = UploadStatus.QUEUED
-    progress: float = Field(default=0.0, ge=0.0, le=100.0)
-    error: str | None = None
-    temp_path: str | None = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    PENDING = "pending"
+    PROCESSING = "processing"
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    DONE_SUCCESS = "success"
+    DONE_PARTIAL_SUCCESS = "partial_success"
+    DONE_ALL_ERROR = "all_error"
 
 
 class UploadFileStatus(BaseModel):
@@ -46,12 +43,12 @@ class UploadFileStatus(BaseModel):
     file_id: str
     filename: str
     size_bytes: int
-    status: UploadStatus = UploadStatus.PENDING
+    status: FileUploadStatus = FileUploadStatus.PENDING
     progress: float = Field(default=0.0, ge=0.0, le=100.0)
     error: str | None = None
     temp_path: str | None = None
     uploaded_at: datetime | None = None
-    processing_info: dict[str, Any] = Field(default_factory=dict)  # normalization, analysis, etc.
+    current_step: str | None = None
 
 
 UploadMode = Literal["chapters", "tracks"]
@@ -80,10 +77,46 @@ class UploadSession(BaseModel):
 
     # Session status
     files: list[UploadFileStatus] = Field(default_factory=list)
-    overall_status: UploadStatus = UploadStatus.PENDING
-    overall_progress: float = Field(default=0.0, ge=0.0, le=100.0)
     error_message: str | None = None
     new_chapter_ids: list[str] = Field(default_factory=list)
+    session_done: bool = False
+
+    # File registration tracking
+    files_registered: bool = False  # Set to True when client pre-registers file count
+    expected_file_count: int = 0  # Number of files expected to be uploaded
+    all_files_uploaded: bool = False  # Set to True when finalize endpoint is called
+
+    # Processing queue - tracks which files still need to be processed
+    files_to_process: list[str] = Field(default_factory=list)  # List of file_ids pending processing
+
+    @property
+    def overall_progress(self) -> float:
+        if not self.files:
+            return 0.0
+        total = sum(file.progress for file in self.files)
+        return total / len(self.files)
+
+    @property
+    def overall_status(self) -> SessionUploadStatus:
+        statuses = [file.status for file in self.files]
+
+        completed = (
+            all(status in [FileUploadStatus.DONE, FileUploadStatus.ERROR] for status in statuses)
+            and self.session_done
+        )
+
+        if completed:
+            if all(status == FileUploadStatus.ERROR for status in statuses):
+                return SessionUploadStatus.DONE_ALL_ERROR
+            elif all(status == FileUploadStatus.DONE for status in statuses):
+                return SessionUploadStatus.DONE_SUCCESS
+            else:
+                return SessionUploadStatus.DONE_PARTIAL_SUCCESS
+        else:
+            if any(status == FileUploadStatus.PROCESSING for status in statuses):
+                return SessionUploadStatus.PROCESSING
+            else:
+                return SessionUploadStatus.PENDING
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
@@ -94,11 +127,11 @@ class UploadSessionInitRequest(BaseModel):
 
     upload_mode: UploadMode = "chapters"
     normalize: bool = False
-    target_lufs: float | None = -23.0
+    target_lufs: float = -23.0
     normalize_batch: bool = False
     analyze_intro_outro: bool = False
-    segment_seconds: float | None = 10.0
-    similarity_threshold: float | None = 0.75
+    segment_seconds: float = 10.0
+    similarity_threshold: float = 0.75
     show_waveform: bool = False
 
 

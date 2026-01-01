@@ -25,7 +25,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
 from pydom import html as d
 
-from yoto_web_server.api.models import Card, ChapterDisplay, TrackDisplay
+from yoto_web_server.api.models import (
+    Card,
+    CardCover,
+    CardMetadata,
+    Category,
+    ChapterDisplay,
+    NewCardRequest,
+    TrackDisplay,
+)
 from yoto_web_server.dependencies import (
     ContainerDep,
     IconServiceDep,
@@ -36,15 +44,12 @@ from yoto_web_server.dependencies import (
 from yoto_web_server.models import (
     CardFilterRequest,
     DeletePlaylistResponse,
-    DeleteUploadSessionResponse,
     FileUploadResponse,
-    PlaylistUploadSessionsResponse,
     ReorderChaptersRequest,
     ReorderChaptersResponse,
     UploadSessionInitRequest,
     UploadSessionResponse,
     UploadSessionStatusResponse,
-    UploadStatus,
 )
 from yoto_web_server.templates.base import render_page, render_partial
 from yoto_web_server.templates.icon_components import (
@@ -64,6 +69,7 @@ from yoto_web_server.templates.upload_components import (
     JsonDisplayModalPartial,
     NewPlaylistModalPartial,
     UploadModalPartial,
+    UploadSessionsListPartial,
 )
 
 router = APIRouter()
@@ -244,7 +250,7 @@ async def create_playlist(
     """
     try:
         # Create a new card via API
-        card: Card = await yoto_client.create_card(Card(title=title))
+        card: Card = await yoto_client.create_card(NewCardRequest(title=title))
 
         return render_partial(PlaylistDetailPartial(card=card, playlist_id=card.card_id))
 
@@ -259,7 +265,7 @@ async def create_playlist_with_cover(
     yoto_client: YotoApiDep,
     title: Annotated[str, Form(..., description="Playlist title")],
     cover: Annotated[UploadFile | None, File(description="Cover image file")] = None,
-    category: Annotated[str | None, Form(description="Category")] = None,
+    category: Annotated[Category | None, Form(description="Category")] = None,
 ) -> str:
     """
     Create a new playlist with optional cover image.
@@ -274,9 +280,9 @@ async def create_playlist_with_cover(
     try:
         # Create a new card via API
         card: Card = await yoto_client.create_card(
-            Card(
+            NewCardRequest(
                 title=title,
-                metadata={"category": category} if category else {},
+                metadata=CardMetadata(category=category) if category else None,
             )
         )
 
@@ -446,7 +452,7 @@ async def reorder_chapters(
         card.content.chapters = reordered_chapters
 
         # Save the updated card
-        updated_card = await yoto_client.create_card(card)
+        updated_card = await yoto_client.update_card(card)
 
         logger.info(f"Successfully reordered chapters in playlist {playlist_id}")
 
@@ -569,12 +575,14 @@ async def change_cover(
         cover_base64 = base64.b64encode(cover_content).decode("utf-8")
 
         if not hasattr(card, "metadata") or card.metadata is None:
-            card.metadata = {}
+            card.metadata = CardMetadata()
 
-        card.metadata["cover_image"] = f"data:image/{cover.content_type};base64,{cover_base64}"
+        card.metadata.cover = CardCover(
+            image_l=f"data:image/{cover.content_type};base64,{cover_base64}"
+        )
 
         # Save the updated card
-        await yoto_client.create_card(card)
+        await yoto_client.update_card(card)
 
         logger.info(f"Updated cover for playlist {playlist_id}")
 
@@ -740,14 +748,17 @@ async def upload_file_to_session(
         # Get updated session
         updated_session = upload_session_service.get_session(session_id)
 
-        # Check if all files are uploaded and start processing
-        if updated_session and all(f.status != UploadStatus.PENDING for f in updated_session.files):
-            # All files uploaded, start background processing
-            upload_processing_service.process_session_async(
-                session_id=session_id,
-                playlist_id=playlist_id,
+        if updated_session:
+            all_files_required = updated_session.normalize_batch
+            if not all_files_required:
+                updated_session.files_to_process.append(file_status.file_id)
+                upload_processing_service.process_session_async(
+                    session_id=session_id,
+                    playlist_id=playlist_id,
+                )
+            logger.info(
+                f"Queued file {file.filename} (id: {file_status.file_id}) for parallel processing in session {session_id}"
             )
-            logger.info(f"Started background processing for session {session_id}")
 
         logger.info(
             f"File {file.filename} uploaded to session {session_id}, temp path: {temp_path}"
@@ -774,7 +785,127 @@ async def upload_file_to_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{playlist_id}/upload-session/{session_id}/status", response_class=JSONResponse)
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/register-files", response_class=JSONResponse
+)
+async def register_files_for_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    request: Request,
+    container: ContainerDep,
+    yoto_client: YotoApiDep,
+    file_count: Annotated[int, Form(description="Number of files that will be uploaded")],
+) -> dict[str, Any]:
+    """
+    Pre-register files for an upload session.
+
+    This should be called BEFORE uploading files to tell the server how many files
+    will be uploaded. This allows proper handling of batch normalization which needs
+    to wait for all files before processing.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        file_count: Number of files that will be uploaded
+
+    Returns:
+        JSON confirmation
+    """
+    try:
+        upload_session_service = container.upload_session_service()
+
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Store the expected file count in session
+        session.expected_file_count = file_count
+        session.files_registered = True
+
+        logger.info(f"Registered {file_count} files for session {session_id}")
+
+        return {
+            "status": "ok",
+            "message": f"Registered {file_count} files",
+            "session_id": session_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to register files for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/upload-session/{session_id}/finalize", response_class=JSONResponse)
+async def finalize_upload_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    request: Request,
+    container: ContainerDep,
+    upload_processing_service: UploadProcessingServiceDep,
+    yoto_client: YotoApiDep,
+) -> dict[str, Any]:
+    """
+    Finalize an upload session and start processing (in batch mode only).
+
+    This should be called AFTER all files have been uploaded.
+    - In batch mode: starts the background processing with batch normalization
+    - In non-batch mode: just marks session as complete (processing already started per-file)
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+
+    Returns:
+        JSON confirmation
+    """
+    try:
+        upload_session_service = container.upload_session_service()
+
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Mark session as all files uploaded
+        session.all_files_uploaded = True
+
+        # Only start processing in batch mode
+        # In non-batch mode, files were already queued as they were uploaded
+        if session.normalize_batch:
+            # In batch mode, add all files to the processing queue now
+            session.files_to_process = [f.file_id for f in session.files]
+            upload_processing_service.process_session_async(session_id, playlist_id)
+
+            logger.info(f"Finalized batch mode upload session {session_id}, starting processing")
+        else:
+            logger.info(
+                f"Finalized non-batch mode upload session {session_id}, processing already started per-file"
+            )
+
+        return {
+            "status": "ok",
+            "message": "Upload session finalized"
+            if session.normalize_batch
+            else "Upload session complete (processing per-file)",
+            "session_id": session_id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to finalize upload session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 async def get_upload_session_status(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
@@ -816,26 +947,26 @@ async def get_upload_session_status(
         raise
     except Exception as e:
         logger.error(f"Failed to get upload session status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
-@router.get("/{playlist_id}/upload-sessions", response_class=JSONResponse)
+@router.get("/{playlist_id}/upload-sessions", response_class=HTMLResponse)
 async def get_playlist_upload_sessions(
     playlist_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
     yoto_client: YotoApiDep,
-) -> PlaylistUploadSessionsResponse:
+) -> str:
     """
-    Get all active upload sessions for a playlist.
+    Get all active upload sessions for a playlist as HTML.
 
-    Useful for restoring upload state when user navigates back to playlist.
+    Useful for HTMX polling to display upload progress.
 
     Args:
         playlist_id: ID of the playlist
 
     Returns:
-        JSON with list of active sessions
+        HTML rendering of active sessions
     """
     try:
         # Get upload session service
@@ -844,12 +975,12 @@ async def get_playlist_upload_sessions(
         # Get active sessions for this playlist
         sessions = upload_session_service.get_playlist_sessions(playlist_id)
 
-        return PlaylistUploadSessionsResponse(
-            status="ok",
+        # Render as HTML component
+        component = UploadSessionsListPartial(
             playlist_id=playlist_id,
             sessions=sessions,
-            count=len(sessions),
         )
+        return render_partial(component)
 
     except HTTPException:
         raise
@@ -858,23 +989,24 @@ async def get_playlist_upload_sessions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/{playlist_id}/upload-session/{session_id}", response_class=JSONResponse)
+@router.delete("/{playlist_id}/upload-session/{session_id}", response_class=HTMLResponse)
 async def delete_upload_session(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
     yoto_client: YotoApiDep,
-) -> DeleteUploadSessionResponse:
+) -> str:
     """
     Delete an upload session and clean up temp files.
+    Returns HTML for HTMX swap.
 
     Args:
         playlist_id: ID of the playlist
         session_id: ID of the upload session
 
     Returns:
-        JSON confirmation
+        HTML of updated upload sessions list
     """
     try:
         # Get upload session service
@@ -896,11 +1028,9 @@ async def delete_upload_session(
 
         logger.info(f"Deleted upload session {session_id}")
 
-        return DeleteUploadSessionResponse(
-            status="ok",
-            message="Upload session deleted successfully",
-            session_id=session_id,
-        )
+        # Get all active sessions and render updated list
+        sessions = upload_session_service.get_playlist_sessions(playlist_id)
+        return render_partial(UploadSessionsListPartial(playlist_id=playlist_id, sessions=sessions))
 
     except HTTPException:
         raise
@@ -909,25 +1039,26 @@ async def delete_upload_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{playlist_id}/upload-session/{session_id}/stop", response_class=JSONResponse)
+@router.post("/{playlist_id}/upload-session/{session_id}/stop", response_class=HTMLResponse)
 async def stop_upload_session(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
     request: Request,
     container: ContainerDep,
     yoto_client: YotoApiDep,
-) -> DeleteUploadSessionResponse:
+) -> str:
     """
     Stop an upload session that is currently processing.
 
     This will cancel further processing and mark the session as stopped.
+    Returns HTML for HTMX swap.
 
     Args:
         playlist_id: ID of the playlist
         session_id: ID of the upload session
 
     Returns:
-        JSON confirmation
+        HTML of updated upload sessions list
     """
     try:
         # Get upload session service
@@ -953,11 +1084,9 @@ async def stop_upload_session(
 
         logger.info(f"Stopped upload session {session_id}")
 
-        return DeleteUploadSessionResponse(
-            status="ok",
-            message="Upload session stopped successfully",
-            session_id=session_id,
-        )
+        # Get all active sessions and render updated list
+        sessions = upload_session_service.get_playlist_sessions(playlist_id)
+        return render_partial(UploadSessionsListPartial(playlist_id=playlist_id, sessions=sessions))
 
     except HTTPException:
         raise

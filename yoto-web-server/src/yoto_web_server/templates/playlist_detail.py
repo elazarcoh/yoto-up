@@ -16,6 +16,7 @@ from yoto_web_server.templates.htmx_helpers import (
 )
 from yoto_web_server.templates.playlist_components import ChapterItem
 from yoto_web_server.templates.upload_components import ActiveUploadsSection
+from yoto_web_server.utils.alpine import xon
 
 
 class PlaylistDetail(Component):
@@ -49,7 +50,7 @@ class PlaylistDetail(Component):
         return d.Div(
             classes="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
             id="playlist-detail",
-            **{"data-playlist-id": self.card.card_id},
+            data_playlist_id=self.card.card_id,
         )(
             # Include necessary JavaScript libraries and helpers
             d.Script(src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"),
@@ -112,7 +113,7 @@ class PlaylistDetail(Component):
             ),
         )
 
-    def _render_header(self, title: str, description: str, cover_url: str):
+    def _render_header(self, title: str, description: str, cover_url: str | None):
         """Render playlist header with cover and actions."""
         return d.Div(classes="px-6 py-8 sm:px-8 bg-gradient-to-r from-indigo-50 to-blue-50")(
             d.Div(classes="flex flex-col sm:flex-row gap-8")(
@@ -160,7 +161,7 @@ class PlaylistDetail(Component):
                 hx_get=f"/playlists/{self.card.card_id}/upload-modal",
                 hx_target="#upload-modal-container",
                 hx_swap="innerHTML",
-                **{"hx-on::after-request": "removeClass('upload-modal-container', 'hidden')"},
+                hx_on__after_request="document.getElementById('upload-modal-container').classList.remove('hidden')",
             )("⬆️ Upload Items"),
             # Change cover - would load cover selection modal
             d.Button(
@@ -242,18 +243,18 @@ class EditControlsPartial(Component):
                 d.Button(
                     classes="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors",
                     type="button",
-                    **{
-                        "hx-on:click": "document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.checked = true)"
-                    },
+                    **xon().click(
+                        "document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.checked = true)"
+                    ),
                     title="Select all items",
                 )("✓ Select All"),
                 # Invert selection
                 d.Button(
                     classes="px-3 py-1 text-sm bg-blue-400 text-white rounded hover:bg-blue-500 transition-colors",
                     type="button",
-                    **{
-                        "hx-on:click": "document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.checked = !cb.checked)"
-                    },
+                    **xon().click(
+                        "document.querySelectorAll('#chapters-list input[type=checkbox]').forEach(cb => cb.checked = !cb.checked)"
+                    ),
                     title="Invert selection",
                 )("⟲ Invert"),
                 # Set Icon for selected

@@ -43,6 +43,7 @@ from yoto_web_server.api.models import (
     DeviceStatus,
     DisplayIconManifest,
     IconUploadResponse,
+    NewCardRequest,
     TranscodedAudioResponse,
 )
 
@@ -379,16 +380,16 @@ class YotoApiClient:
         card_data = data.get("card", data)
         return Card.model_validate(card_data)
 
-    async def _create_or_update_card(self, card: Card) -> Card:
+    async def _create_or_update_card(self, card: NewCardRequest | Card) -> Card:
         """Create or update a card."""
         # Use exclude_none=True to avoid sending null values
-        payload = card.model_dump(by_alias=True, exclude_none=True)
+        payload = card.model_dump(exclude_none=True)
         response = await self._request("POST", "/content", json=payload)
         data = response.json()
         card_data = data.get("card", data)
         return Card.model_validate(card_data)
 
-    async def create_card(self, card: Card) -> Card:
+    async def create_card(self, card: NewCardRequest) -> Card:
         """
         Create a new card.
 
@@ -526,7 +527,19 @@ class YotoApiClient:
 
             try:
                 response = await self._request("GET", url, params=params)
-                return TranscodedAudioResponse.model_validate(response.json())
+                result = TranscodedAudioResponse.model_validate(response.json())
+
+                # Check if transcoding is complete by looking for transcoded_sha256
+                if result.transcode.transcoded_sha256:
+                    return result
+
+                # Transcoding still in progress, wait and retry
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(poll_interval)
+                else:
+                    raise YotoApiError(
+                        f"Transcoding timeout after {max_attempts} attempts"
+                    ) from None
             except YotoNotFoundError:
                 # Not ready yet
                 if attempt < max_attempts - 1:
@@ -693,7 +706,7 @@ class YotoApiClient:
         response = await self._request(
             "PUT",
             f"/device-v2/{device_id}/config",
-            json=config.model_dump(exclude_none=True, by_alias=True),
+            json=config.model_dump(exclude_none=True),
         )
         response.raise_for_status()
 
