@@ -382,7 +382,7 @@ class YotoApiClient:
     async def _create_or_update_card(self, card: Card) -> Card:
         """Create or update a card."""
         # Use exclude_none=True to avoid sending null values
-        payload = card.model_dump(exclude_none=True)
+        payload = card.model_dump(by_alias=True, exclude_none=True)
         response = await self._request("POST", "/content", json=payload)
         data = response.json()
         card_data = data.get("card", data)

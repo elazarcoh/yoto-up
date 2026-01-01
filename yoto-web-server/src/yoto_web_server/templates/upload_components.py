@@ -118,17 +118,17 @@ class UploadModalPartial(Component):
             ),
             # Upload JavaScript
             d.Script()(
-                r"""//js
+                rf"""//js
             const pendingFiles = [];
-            let currentPlaylistId = '"""
-                + self.playlist_id
-                + r"""';
-            
+            let currentPlaylistId = '{self.playlist_id}';
+            """
+                + r"""//js
+
             function closeUploadModal() {
                 const modal = document.getElementById('upload-modal');
                 if (modal) modal.remove();
             }
-            
+
             // File selection using File System Access API
             document.getElementById('select-files-btn')?.addEventListener('click', async () => {
                 try {
@@ -159,7 +159,7 @@ class UploadModalPartial(Component):
                     if (err.name !== 'AbortError') console.error('File selection error:', err);
                 }
             });
-            
+
             // Folder selection
             document.getElementById('select-folder-btn')?.addEventListener('click', async () => {
                 try {
@@ -197,7 +197,7 @@ class UploadModalPartial(Component):
                     }
                 }
             }
-            
+
             function addFileToPending(file, path = '') {
                 // Check for duplicates
                 const exists = pendingFiles.some(f => f.name === file.name && f.size === file.size);
@@ -520,12 +520,20 @@ class ActiveUploadsSection(Component):
                         method: 'DELETE'
                     });
                     if (response.ok) {
-                        document.getElementById(`upload-${sessionId}`).remove();
-                        pollActiveUploads();
+                        // Remove the session from UI
+                        const sessionEl = document.getElementById(`upload-${sessionId}`);
+                        if (sessionEl) {
+                            sessionEl.remove();
+                        }
+                        // Re-poll to refresh the display
+                        setTimeout(pollActiveUploads, 100);
+                    } else {
+                        const errorData = await response.json();
+                        alert('Failed to dismiss session: ' + (errorData.detail || 'Unknown error'));
                     }
                 } catch (error) {
                     console.error('Error dismissing session:', error);
-                    alert('Failed to dismiss session');
+                    alert('Failed to dismiss session: ' + error.message);
                 }
             }
 
@@ -542,14 +550,19 @@ class ActiveUploadsSection(Component):
                     });
                     if (response.ok) {
                         // Remove the session from UI
-                        document.getElementById(`upload-${sessionId}`).remove();
-                        pollActiveUploads();
+                        const sessionEl = document.getElementById(`upload-${sessionId}`);
+                        if (sessionEl) {
+                            sessionEl.remove();
+                        }
+                        // Re-poll to refresh the display and handle any remaining sessions
+                        setTimeout(pollActiveUploads, 100);
                     } else {
-                        alert('Failed to stop session');
+                        const errorData = await response.json();
+                        alert('Failed to stop session: ' + (errorData.detail || 'Unknown error'));
                     }
                 } catch (error) {
                     console.error('Error stopping session:', error);
-                    alert('Failed to stop session');
+                    alert('Failed to stop session: ' + error.message);
                 }
             }
             

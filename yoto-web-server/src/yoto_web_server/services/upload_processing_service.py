@@ -214,7 +214,10 @@ class UploadProcessingService:
                 )
             except Exception as e:
                 logger.error(f"Failed to update playlist: {e}")
-                # We don't mark session as error here because files were processed successfully
+                # Mark all files as error since playlist update failed
+                self._mark_session_error(
+                    session_id, f"Failed to add tracks to playlist: {str(e)}"
+                )
 
         logger.info(f"Session {session_id} processing complete")
 

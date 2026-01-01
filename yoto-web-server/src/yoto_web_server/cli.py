@@ -15,6 +15,8 @@ from loguru import logger
 from yoto_web_server.core.config import get_settings
 from yoto_web_server.core.logging import configure_logging
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+
 app = typer.Typer(
     name="yoto-server",
     help="Yoto Web Server - Manage Yoto cards and playlists from your browser",
@@ -81,6 +83,7 @@ def serve(
         host=host,
         port=port,
         reload=reload,
+        reload_dirs=HERE,
         log_level=actual_log_level,
         workers=workers if not reload else 1,
     )

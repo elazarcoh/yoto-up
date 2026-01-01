@@ -37,7 +37,7 @@
             "args": [
                 "run",
                 "yoto-server",
-                "serve",    
+                "serve",
                 "--no-reload"
             ],
             "isBackground": true,
@@ -61,13 +61,18 @@
             "runOptions": {
                 "instanceLimit": 1,
                 "reevaluateOnRerun": true
-            }
+            },
+            "problemMatcher": []
         },
         {
             "label": "Run Tests",
             "type": "shell",
             "command": "uv",
-            "args": ["run", "pytest", "-v"],
+            "args": [
+                "run",
+                "pytest",
+                "-v"
+            ],
             "group": {
                 "kind": "test",
                 "isDefault": true
@@ -77,35 +82,58 @@
             "label": "Type Check",
             "type": "shell",
             "command": "uv",
-            "args": ["run", "mypy", "src/yoto_web_server"],
+            "args": [
+                "run",
+                "mypy",
+                "src/yoto_web_server"
+            ],
             "group": "build"
         },
         {
             "label": "Lint",
             "type": "shell",
             "command": "uv",
-            "args": ["run", "ruff", "check", "src/yoto_web_server"],
+            "args": [
+                "run",
+                "ruff",
+                "check",
+                "src/yoto_web_server"
+            ],
             "group": "build"
         },
         {
             "label": "Format",
             "type": "shell",
             "command": "uv",
-            "args": ["run", "ruff", "format", "src/yoto_web_server"],
+            "args": [
+                "run",
+                "ruff",
+                "format",
+                "src/yoto_web_server"
+            ],
             "group": "build"
         },
         {
             "label": "Docker: Build Dev",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "build", "yoto-web-server-dev"],
+            "args": [
+                "compose",
+                "build",
+                "yoto-web-server-dev"
+            ],
             "group": "build"
         },
         {
             "label": "Docker: Start Dev (with watch)",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "up", "yoto-web-server-dev", "--watch"],
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server-dev",
+                "--watch"
+            ],
             "isBackground": true,
             "runOptions": {
                 "instanceLimit": 1,
@@ -129,7 +157,11 @@
             "label": "Docker: Start Dev (no watch)",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "up", "yoto-web-server-dev"],
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server-dev"
+            ],
             "isBackground": true,
             "runOptions": {
                 "instanceLimit": 1,
@@ -140,21 +172,32 @@
             "label": "Docker: Stop Dev",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "down"],
+            "args": [
+                "compose",
+                "down"
+            ],
             "group": "build"
         },
         {
             "label": "Docker: Build Prod",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "build", "yoto-web-server"],
+            "args": [
+                "compose",
+                "build",
+                "yoto-web-server"
+            ],
             "group": "build"
         },
         {
             "label": "Docker: Start Prod",
             "type": "shell",
             "command": "docker",
-            "args": ["compose", "up", "yoto-web-server"],
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server"
+            ],
             "isBackground": true,
             "runOptions": {
                 "instanceLimit": 1,

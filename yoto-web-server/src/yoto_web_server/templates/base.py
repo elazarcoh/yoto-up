@@ -58,8 +58,6 @@ class BaseLayout(Component):
                 HtmxExtensions.class_tools.script(),
                 # Alpine.js for simple interactivity
                 d.Script(src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js", defer=True),
-                # App JavaScript
-                d.Script(src="/static/js/app.js", defer=True),
                 # Custom styles
                 d.Style()("""
                     @layer utilities {
