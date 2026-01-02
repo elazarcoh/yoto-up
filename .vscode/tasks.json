@@ -1,132 +1,208 @@
 {
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Start Yoto Server (with reload)",
-      "type": "shell",
-      "command": "uv",
-      "args": [
-        "run",
-        "python",
-        "src/yoto_up_server/cli.py",
-        "--reload",
-        "--no-browser"
-      ],
-      "isBackground": true,
-      "problemMatcher": {
-        "pattern": {
-          "regexp": "^.*Uvicorn running on.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Server (with reload)",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "yoto-server",
+                "serve",
+                "--reload"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            },
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": ".",
+                    "file": 1,
+                    "location": 2,
+                    "message": 3
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Starting.*",
+                    "endsPattern": "^.*Uvicorn running.*"
+                }
+            }
         },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "^.*Uvicorn running.*$",
-          "endsPattern": "^.*Application startup complete.*$"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "new",
-        "focus": false
-      },
-      "runOptions": {
-        "instanceLimit": 1,
-        "reevaluateOnRerun": true
-      }
-    },
-    {
-      "label": "Start Yoto Server (no reload)",
-      "type": "shell",
-      "command": "uv",
-      "args": [
-        "run",
-        "python",
-        "src/yoto_up_server/cli.py",
-        "--no-reload",
-        "--no-browser"
-      ],
-      "isBackground": true,
-      "problemMatcher": {
-        "pattern": {
-          "regexp": "^.*Uvicorn running on.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
+        {
+            "label": "Start Server (no reload)",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "yoto-server",
+                "serve",
+                "--no-reload"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            }
         },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "^.*Uvicorn running.*$",
-          "endsPattern": "^.*Application startup complete.*$"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "new",
-        "focus": false
-      },
-      "runOptions": {
-        "instanceLimit": 1,
-        "reevaluateOnRerun": true
-      }
-    },
-    {
-      "label": "Start Yoto Server (debug mode)",
-      "type": "shell",
-      "command": "uv",
-      "args": [
-        "run",
-        "python",
-        "src/yoto_up_server/cli.py",
-        "--reload",
-        "--no-browser",
-        "--debug"
-      ],
-      "isBackground": true,
-      "problemMatcher": {
-        "pattern": {
-          "regexp": "^.*Uvicorn running on.*$",
-          "file": 1,
-          "location": 2,
-          "message": 3
+        {
+            "label": "Start Server (debug mode)",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "yoto-server",
+                "serve",
+                "--reload",
+                "--debug"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            },
+            "problemMatcher": []
         },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": "^.*Uvicorn running.*$",
-          "endsPattern": "^.*Application startup complete.*$"
+        {
+            "label": "Run Tests",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "pytest",
+                "-v"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Type Check",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "mypy",
+                "src/yoto_web_server"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Lint",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "ruff",
+                "check",
+                "src/yoto_web_server"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Format",
+            "type": "shell",
+            "command": "uv",
+            "args": [
+                "run",
+                "ruff",
+                "format",
+                "src/yoto_web_server"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Build Dev",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "build",
+                "yoto-web-server-dev"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Start Dev (with watch)",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server-dev",
+                "--watch"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            },
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": ".",
+                    "file": 1,
+                    "location": 2,
+                    "message": 3
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "^.*Starting.*",
+                    "endsPattern": "^.*Uvicorn running.*"
+                }
+            }
+        },
+        {
+            "label": "Docker: Start Dev (no watch)",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server-dev"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            }
+        },
+        {
+            "label": "Docker: Stop Dev",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "down"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Build Prod",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "build",
+                "yoto-web-server"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Docker: Start Prod",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "compose",
+                "up",
+                "yoto-web-server"
+            ],
+            "isBackground": true,
+            "runOptions": {
+                "instanceLimit": 1,
+                "reevaluateOnRerun": true
+            }
         }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "new",
-        "focus": false
-      },
-      "runOptions": {
-        "instanceLimit": 1,
-        "reevaluateOnRerun": true
-      }
-    },
-    {
-      "label": "Kill Yoto Server processes",
-      "type": "shell",
-      "command": "taskkill",
-      "args": [
-        "/F",
-        "/IM",
-        "python.exe"
-      ],
-      "windows": {
-        "command": "taskkill",
-        "args": [
-          "/F",
-          "/IM",
-          "python.exe"
-        ]
-      },
-      "presentation": {
-        "reveal": "silent"
-      }
-    }
-  ]
+    ]
 }

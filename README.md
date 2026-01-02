@@ -1,168 +1,79 @@
-# Yoto-UP
+# Yoto Web Server
 
-<img src="art.jpeg" alt="Artwork preview" style="max-width:100%;height:auto;">
+A standalone FastAPI-based web server for managing Yoto cards and playlists.
 
+## Features
 
-A multipurpose set of command-line, terminal UI, and graphical tools for managing your Yoto content.  
+- 🎵 **Playlist Management** - View, create, edit, and delete playlists
+- 🎨 **Icon Browser** - Browse and assign icons to chapters and tracks
+- 📱 **Device Control** - Monitor and control Yoto devices
+- 🔐 **Session-Based Auth** - Secure OAuth authentication with Yoto
 
-Features include content organization, device management, and easy integration with Yoto services.
+## Quick Start
 
-   # 🚀 Yoto-UP
+### Using uv (recommended)
 
-   A toolbox for managing Yoto content from the command line, a terminal UI, or a GUI.
+```bash
+# Clone and navigate to the directory
+cd yoto-web-server
 
-   Yoto-UP helps with content organization, device management, icon handling, and easy integration with Yoto services.
+# Create virtual environment and install dependencies
+uv sync
 
-   ## ✨ Highlights
+# Set encryption key for session cookies
+export SESSION_ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
-   - 🔗 Integration with Yoto Services — simplified access to the Yoto API and helper utilities
-   - 🗂️ Playlist/Card organization — chapters, tracks and metadata management
-      - 🎵 Track titles, keys and durations
-      - 🖼️ Icon management — autoselect or pick icons via search
-      - 🖌️ Cover management — set, import, or auto-search cover art; embed into card metadata
-      - 📤 Export / 📥 Import cards
-   - 🖥️ Interfaces — CLI, TUI (terminal UI) and a small graphical UI
-   - 🔊 Audio preparation — normalize volume levels, auto-trim silence, and apply basic level adjustments before upload
-   - 🖼️ Icon editor — feature rich editor with text and image stamping
+# Run the server
+uv run yoto-server --reload
+```
 
-   For full docs and examples see the project site: https://xkjq.github.io/yoto-up/
+### Using Docker
 
-   ### Command Line First
+```bash
+# Build and run with docker-compose
+docker-compose up --build
 
-   Leveraging Python libraries like Typer, Rich, and Textual for a vibrant, user-friendly command-line experience. Creating and managing cards with text has never been easier or more colorful 🌈.
+# Or build manually
+docker build -t yoto-web-server .
+docker run -p 8000:8000 -e SESSION_ENCRYPTION_KEY=your-key yoto-web-server
+```
 
-   ### Graphical Interface Included
+### Development Container
 
-   For tasks better suited to a visual workflow, Yoto-UP also provides a GUI built with Flet, making advanced operations accessible and sometimes even intuitive.
+Open in VS Code with the Dev Containers extension for a fully configured development environment.
 
-   ## 🛠️ Installation
+## Configuration
 
-   ### With uv(x)
+Environment variables:
 
-   1. [Install uv](https://docs.astral.sh/uv/getting-started/installation/)
-   
-   2. Run with uvx _(without installing if you just want to try it out)_<sup>[1]</sup>
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `SESSION_ENCRYPTION_KEY` | Fernet key for cookie encryption | Yes |
+| `YOTO_UP_DEBUG` | Enable debug mode (`true`/`false`) | No |
+| `YOTO_UP_DEBUG_DIR` | Directory for debug output | No |
+| `HOST` | Server host (default: `0.0.0.0`) | No |
+| `PORT` | Server port (default: `8000`) | No |
 
-      Command line
-      ```bash
-      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up" yoto [command]
-      ```
+## Project Structure
 
-      GUI
-      ```bash
-      uvx --from "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]" yoto gui
-      ```
+```
+yoto-web-server/
+├── src/
+│   └── yoto_web_server/
+│       ├── api/              # Yoto API client
+│       ├── core/             # Configuration, security
+│       ├── middleware/       # Session handling
+│       ├── routers/          # FastAPI routes
+│       ├── services/         # Business logic
+│       ├── templates/        # PyDOM components
+│       └── utils/            # Helpers
+├── tests/
+├── .devcontainer/
+├── Dockerfile
+├── docker-compose.yml
+└── pyproject.toml
+```
 
-   3. If you like it, install with uv tool<sup>[2]</sup>
-      ```bash
-      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up"
-      ```
-      This should add the command `yoto` to your path, test it out with
-      ```bash
-      yoto --help
-      ```
+## License
 
-      or if you want the GUI
-      ```bash
-      uv tool install "git+https://github.com/xkjq/yoto-up.git@main#egg=yoto-up[gui]"
-      ```
-      Then run
-
-      ```bash
-      yoto gui
-      ```
-
-[1] uvx allows you to run a python tool/package without installation (by creating a temporary isolated environment).
-
-[2] uv tool also supports upgrading the tool once installed, see [their docs](https://docs.astral.sh/uv/guides/tools/#installing-tools) for more information.
-      
-
-   ### From source
-
-   1. Clone the repository and change into it:
-
-   ```bash
-   git clone https://github.com/xkjq/yoto-up.git
-   cd yoto-up
-   ```
-
-   2. Create and activate a virtual environment
-
-   You can use the standard Python venv workflow, but uv is recommended
-
-   Standard (bash / zsh / sh):
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   ```
-
-   Standard (fish):
-
-   ```fish
-   python -m venv .venv
-   source .venv/bin/activate.fish
-   ```
-
-   Using `uv` (recommended if available):
-
-   ```bash
-   uv venv
-   source .venv/bin/activate
-   ```
-
-   3. Install Python dependencies:
-
-   ```bash
-   (uv) pip install -r requirements.txt
-   ```
-
-   Quick checks and notes:
-
-   - Confirm the venv Python is active: `python --version` and `which python` should point into `.venv/`.
-   - macOS / Linux: use the system `python3` if `python` is not available.
-   - Alternative workflows: `pipx` or `poetry` can be used if preferred.
-
-   ## ▶️ Usage
-
-   For more details please see the (docs)[https://xkjq.github.io/yoto-up/]
-
-   ### CLI / TUI
-   • Start the CLI (lists commands):
-
-   ```bash
-   python yoto.py --help
-   ```
-
-   • Open the terminal editor for a card:
-
-   ```bash
-   python yoto.py edit-card <CARD_ID>
-   ```
-
-   [![asciicast](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC.svg)](https://asciinema.org/a/tYjCFv9kBx8cyCVv1sUSXOCoC)
-   [![asciicast](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB.svg)](https://asciinema.org/a/ebXKat85slfP1ayc76wWJycsB)
-
-   ### GUI
-
-   ```bash
-   python gui.py
-   ```
-
-   or 
-
-   ```bash
-   flet run gui.py
-   ```
-
-   or
-
-   ```bash
-   python yoto.py gui
-   ```
-
-
-   ## 📜 License
-
-   MIT — see `LICENSE` for details.
-
+MIT License - See [LICENSE](LICENSE) for details.

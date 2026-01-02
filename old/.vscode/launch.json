@@ -1,0 +1,24 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Yoto Up GUI",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/yoto_up/gui.py",
+            "args": [],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Dev Server",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/yoto_up_server/cli.py",
+            "args": ["--reload", "--no-browser", "--debug"],
+            "console": "integratedTerminal"
+        }
+    ]
+}

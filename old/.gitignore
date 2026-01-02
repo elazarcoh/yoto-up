@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.manifest
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# VS Code
+.vscode/**
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test output
+htmlcov/
+.coverage
+.tox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+
+# Misc
+*.sqlite3
+*.db
+
+# Ignore local config
+local_settings.py
+
+files/*
+
+tokens.json
+
+.yoto_icon_cache/
+.yotoicons_cache/
+.card_versions/
+.tmp_trim/
+cards/
+saved_icons/
+
+.yoto_api_cache.json
+.yoto_icon_upload_cache.json
+ui_state.json
+waveform_cache.json
+
+docs/site/
+
+# imported/generated stamp files (do not commit)
+.stamps/imported/
+
+storage/
+assets/
+.env
+.app_data/
