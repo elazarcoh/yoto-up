@@ -23,45 +23,45 @@ dependencies = [
     # Web framework
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
-    
+
     # HTTP client
     "httpx>=0.28.0",
-    
+
     # HTML rendering
     "pydom>=0.3.6",
-    
+
     # Templating (for fallback)
     "jinja2>=3.1.0",
-    
+
     # File uploads
     "python-multipart>=0.0.18",
-    
+
     # Dependency injection
     "dependency-injector>=4.45.0",
-    
+
     # CLI
     "typer>=0.15.0",
-    
+
     # Settings management
     "pydantic>=2.10.0",
     "pydantic-settings>=2.7.0",
-    
+
     # Security
     "itsdangerous>=2.2.0",
     "cryptography>=44.0.0",
-    
+
     # Environment
     "python-dotenv>=1.0.1",
-    
+
     # HTML parsing (for icon scraping)
     "selectolax>=0.4.0",
-    
+
     # MQTT for device communication
     "aiomqtt>=2.3.0",
-    
+
     # Logging
     "loguru>=0.7.3",
-    
+
     # Fuzzy search
     "rapidfuzz>=3.10.0",
 
@@ -95,8 +95,9 @@ yoto-server = "yoto_web_server.cli:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/yoto_web_server"]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",

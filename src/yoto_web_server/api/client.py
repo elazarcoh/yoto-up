@@ -706,7 +706,7 @@ class YotoApiClient:
         response = await self._request(
             "PUT",
             f"/device-v2/{device_id}/config",
-            json=config.model_dump(exclude_none=True),
+            json=config.model_dump(mode="json", exclude_none=True),
         )
         response.raise_for_status()
 

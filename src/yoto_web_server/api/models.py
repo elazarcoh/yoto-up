@@ -14,7 +14,7 @@ from enum import Enum
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel as _BaseModel
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_serializer, model_validator
 
 
 class BaseModel(_BaseModel):
@@ -365,6 +365,15 @@ class ConfigAlarms(BaseModel):
         volume_part = self.volume_level
         enabled_part = "1" if self.is_enabled else "0"
         return ",".join([weekdays_part, time_part, tone_part, "", "", volume_part, enabled_part])
+
+    @model_serializer(mode="wrap")
+    def _serialize_model(self, serializer: Any, info: Any) -> str | dict[str, Any]:
+        """Serialize alarm to string format for API requests."""
+        # When serializing to JSON for API requests, return the encoded string
+        # Otherwise, use the default serialization
+        if info.mode == "json":
+            return self.encode()
+        return serializer(self)
 
 
 class DeviceConfigResponseConfig(BaseModel):

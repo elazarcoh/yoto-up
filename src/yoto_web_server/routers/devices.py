@@ -206,7 +206,7 @@ def _update_from_current_config(
             volume_level=current_config.device.config.volume_level,
             clock_face=current_config.device.config.clock_face,
             log_level=current_config.device.config.log_level,
-            alarms=[alarm.encode() for alarm in current_config.device.config.alarms],
+            alarms=current_config.device.config.alarms,
         ),
     )
 
