@@ -266,6 +266,15 @@ class EditControlsPartial(Component):
                     hx_swap="innerHTML",
                     title="Set icon for selected items",
                 )("🖼️ Set Icon"),
+                # Re-number chapters
+                d.Button(
+                    classes="px-3 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 transition-colors",
+                    hx_post=f"/playlists/{self.playlist_id}/renumber-chapters",
+                    hx_confirm="Re-number chapters by their order?",
+                    hx_target="#chapters-list",
+                    hx_swap="innerHTML",
+                    title="Auto-number chapters sequentially",
+                )("🔢 Re-number"),
                 # Delete selected
                 d.Button(
                     classes="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors",

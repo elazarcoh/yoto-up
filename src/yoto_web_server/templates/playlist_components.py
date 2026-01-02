@@ -86,17 +86,33 @@ class ChapterItem(Component):
                         else "event.preventDefault()",
                         type="button",
                     )(f"{'▼' if has_tracks else '▶'}"),
-                    d.Button(
-                        type="button",
-                        id=f"chapter-placeholder-{html_id_safe(self.chapter.key)}",
-                        classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600 hover:ring-2 hover:ring-indigo-500 cursor-pointer p-0 border-0 overflow-hidden",
-                        hx_get=f"/playlists/{self.playlist_id}/icon-sidebar?chapter_ids={self.index}",
-                        hx_target="#icon-sidebar-container",
-                        hx_swap="innerHTML",
-                    )(
-                        LazyIconImg(icon_id=self.chapter.display.icon_16x16.replace("#", "%23"))
-                        if self.chapter.display and self.chapter.display.icon_16x16
-                        else d.Span()
+                    # Icon container with overlay label on the left
+                    d.Div(classes="flex-shrink-0 flex items-center gap-2")(
+                        # Overlay label (if exists) - clickable to edit
+                        d.Div(
+                            id=f"overlay-label-{self.index}",
+                            classes="w-6 h-8 bg-black bg-opacity-70 rounded flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:bg-opacity-90 transition-all"
+                            if self.chapter.overlay_label else
+                            "w-6 h-8 bg-gray-300 hover:bg-gray-400 rounded flex items-center justify-center text-xs font-bold text-gray-600 cursor-pointer transition-all",
+                            hx_get=f"/playlists/{self.playlist_id}/edit-overlay-label/{self.index}",
+                            hx_target=f"#overlay-label-{self.index}",
+                            hx_swap="outerHTML",
+                            title="Click to add or edit label (max 3 characters)",
+                        )(
+                            self.chapter.overlay_label if self.chapter.overlay_label else "+"
+                        ),
+                        d.Button(
+                            type="button",
+                            id=f"chapter-placeholder-{html_id_safe(self.chapter.key)}",
+                            classes="flex-shrink-0 w-8 h-8 bg-gray-200 rounded flex items-center justify-center text-sm font-bold text-gray-600 hover:ring-2 hover:ring-indigo-500 cursor-pointer p-0 border-0 overflow-hidden",
+                            hx_get=f"/playlists/{self.playlist_id}/icon-sidebar?chapter_ids={self.index}",
+                            hx_target="#icon-sidebar-container",
+                            hx_swap="innerHTML",
+                        )(
+                            LazyIconImg(icon_id=self.chapter.display.icon_16x16.replace("#", "%23"))
+                            if self.chapter.display and self.chapter.display.icon_16x16
+                            else d.Span()
+                        ),
                     ),
                     # Chapter title
                     d.Span(

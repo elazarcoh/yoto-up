@@ -23,6 +23,7 @@ from fastapi import (
 )
 from fastapi.responses import HTMLResponse, JSONResponse
 from loguru import logger
+from pydom import Renderable
 from pydom import html as d
 
 from yoto_web_server.api.models import (
@@ -1246,4 +1247,167 @@ async def remove_playlist_cover(
 
     except Exception as e:
         logger.error(f"Failed to remove playlist cover: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/edit-overlay-label/{chapter_index}", response_class=HTMLResponse)
+async def edit_overlay_label(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    chapter_index: Annotated[int, Path()],
+    yoto_client: YotoApiDep,
+) -> Renderable:
+    """
+    Render the edit overlay label input form for a chapter.
+    Replaces the overlay label display with an editable text input.
+    """
+    try:
+        # Fetch the card
+        card: Card | None = await yoto_client.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Get chapters
+        chapters = []
+        if card.content:
+            chapters = card.content.chapters
+
+        if not chapters:
+            raise HTTPException(status_code=400, detail="No chapters found in playlist")
+
+        if chapter_index < 0 or chapter_index >= len(chapters):
+            raise HTTPException(status_code=400, detail="Invalid chapter index")
+
+        chapter = chapters[chapter_index]
+        current_label = chapter.overlay_label or ""
+
+        return d.Input(
+            type="text",
+            id=f"overlay-label-input-{chapter_index}",
+            name="overlay_label",
+            maxlength="3",
+            value=current_label,
+            classes="w-6 h-8 text-xs text-center font-bold p-0 rounded border border-indigo-500 bg-white text-gray-900",
+            hx_post=f"/playlists/{playlist_id}/update-overlay-label/{chapter_index}",
+            hx_trigger="blur",
+            hx_swap="outerHTML",
+            autofocus=True,
+        )()
+    except Exception as e:
+        logger.error(f"Failed to render edit overlay label: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/update-overlay-label/{chapter_index}", response_class=HTMLResponse)
+async def update_overlay_label(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    chapter_index: Annotated[int, Path()],
+    yoto_client: YotoApiDep,
+    overlay_label: Annotated[str, Form()] = "",
+) -> Renderable:
+    """
+    Update the overlay label for a chapter and return the updated label display.
+    """
+    try:
+        # Fetch the card
+        card: Card | None = await yoto_client.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Get chapters
+        chapters = []
+        if card.content:
+            chapters = card.content.chapters
+
+        if not chapters:
+            raise HTTPException(status_code=400, detail="No chapters found in playlist")
+
+        if chapter_index < 0 or chapter_index >= len(chapters):
+            raise HTTPException(status_code=400, detail="Invalid chapter index")
+
+        # Limit to 3 characters
+        overlay_label = overlay_label[:3].strip() if overlay_label else ""
+
+        # Update the chapter
+        chapter = chapters[chapter_index]
+        chapter.overlay_label = overlay_label if overlay_label else None
+
+        # Save the card
+        await yoto_client.update_card(card)
+
+        # Return the updated overlay label display
+        if overlay_label:
+            return d.Div(
+                id=f"overlay-label-{chapter_index}",
+                classes="w-6 h-8 bg-black bg-opacity-70 rounded flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:bg-opacity-90 transition-all",
+                hx_get=f"/playlists/{playlist_id}/edit-overlay-label/{chapter_index}",
+                hx_target=f"#overlay-label-{chapter_index}",
+                hx_swap="outerHTML",
+                title="Click to add or edit label (max 3 characters)",
+            )(overlay_label)
+        else:
+            return d.Div(
+                id=f"overlay-label-{chapter_index}",
+                classes="w-6 h-8 bg-gray-300 hover:bg-gray-400 rounded flex items-center justify-center text-xs font-bold text-gray-600 cursor-pointer transition-all",
+                hx_get=f"/playlists/{playlist_id}/edit-overlay-label/{chapter_index}",
+                hx_target=f"#overlay-label-{chapter_index}",
+                hx_swap="outerHTML",
+                title="Click to add or edit label (max 3 characters)",
+            )("+")
+
+    except Exception as e:
+        logger.error(f"Failed to update overlay label: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/renumber-chapters", response_class=HTMLResponse)
+async def renumber_chapters(
+    request: Request,
+    playlist_id: Annotated[str, Path()],
+    yoto_client: YotoApiDep,
+) -> Renderable:
+    """
+    Re-number chapters by their order with sequential numbers as overlay labels.
+    """
+    try:
+        # Fetch the card
+        card: Card | None = await yoto_client.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Get chapters
+        chapters = []
+        if card.content:
+            chapters = card.content.chapters
+
+        if not chapters:
+            raise HTTPException(status_code=400, detail="No chapters found in playlist")
+
+        # Add sequential numbers as overlay labels
+        for i, chapter in enumerate(chapters, start=1):
+            chapter.overlay_label = str(i)
+
+        # Save the card
+        await yoto_client.update_card(card)
+
+        # Return the updated chapters list
+        return d.Ul(
+            id="chapters-list",
+            classes="divide-y divide-gray-100",
+        )(
+            *[
+                ChapterItem(
+                    chapter=chapter,
+                    index=i,
+                    card_id=card.card_id,
+                    playlist_id=playlist_id,
+                    is_new=False,
+                )
+                for i, chapter in enumerate(chapters)
+            ]
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to renumber chapters: {e}")
         raise HTTPException(status_code=500, detail=str(e))
