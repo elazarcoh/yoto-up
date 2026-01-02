@@ -44,7 +44,24 @@ class DeviceDetailPage(Component):
         self.config = config
 
     def render(self):
-        return d.Div(**xdata({"tab": "control"}))(
+        return d.Div(
+            id="device-detail",
+            **xdata("""{
+                tab: 'control',
+                init() {
+                    const hash = window.location.hash.slice(1);
+                    this.tab = ['control', 'settings', 'alarms'].includes(hash) ? hash : 'control';
+                    window.addEventListener('hashchange', () => {
+                        const newHash = window.location.hash.slice(1);
+                        this.tab = ['control', 'settings', 'alarms'].includes(newHash) ? newHash : 'control';
+                    });
+                },
+                setTab(newTab) {
+                    this.tab = newTab;
+                    window.location.hash = newTab;
+                }
+            }"""),
+        )(
             # Header
             d.Div(classes="flex justify-between items-center mb-6")(
                 d.Div()(
@@ -60,28 +77,28 @@ class DeviceDetailPage(Component):
             d.Div(classes="mb-6 border-b border-gray-200")(
                 d.Nav(classes="-mb-px flex space-x-8")(
                     d.A(
-                        href="#",
+                        href="#control",
                         classes="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer",
                         **xbind().classes(
                             "{ 'border-indigo-500 text-indigo-600': tab === 'control', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'control' }"
                         ),
-                        **xon().click.prevent("tab = 'control'"),
+                        **xon().click.prevent("setTab('control')"),
                     )("Control"),
                     d.A(
-                        href="#",
+                        href="#settings",
                         classes="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer",
                         **xbind().classes(
                             "{ 'border-indigo-500 text-indigo-600': tab === 'settings', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'settings' }"
                         ),
-                        **xon().click.prevent("tab = 'settings'"),
+                        **xon().click.prevent("setTab('settings')"),
                     )("Settings"),
                     d.A(
-                        href="#",
+                        href="#alarms",
                         classes="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer",
                         **xbind().classes(
                             "{ 'border-indigo-500 text-indigo-600': tab === 'alarms', 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': tab !== 'alarms' }"
                         ),
-                        **xon().click.prevent("tab = 'alarms'"),
+                        **xon().click.prevent("setTab('alarms')"),
                     )("Alarms"),
                 )
             ),
