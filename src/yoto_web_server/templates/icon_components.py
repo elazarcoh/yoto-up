@@ -8,6 +8,7 @@ from pydom import Component
 from pydom import html as d
 
 from yoto_web_server.api.models import DisplayIcon
+from yoto_web_server.utils.style import classnames
 
 
 class PaginationControls(Component):
@@ -215,12 +216,20 @@ class IconGridPartial(Component):
             classes="w-full h-full object-cover rounded",
         )
 
+        # Check if this is a yotoicons icon to add a badge by looking at media_id
+        # YotoIcons media IDs start with "yotoicons:"
+        is_yotoicons = icon_id.startswith("yotoicons:")
+
         return d.Button(
-            classes="w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
+            classes=classnames(
+                "w-16 h-16 rounded border-2 border-gray-200 hover:border-indigo-500 hover:shadow-lg transition-all cursor-pointer flex items-center justify-center",
+                {"relative": is_yotoicons},
+            ),
             title=title,
             type="submit",
             name="icon_id",
             value=icon_id,
+            data_yotoicons="true" if is_yotoicons else None,
         )(img_component)
 
 
@@ -283,8 +292,10 @@ class IconSidebarPartial(Component):
                             hx_swap="innerHTML",
                             hx_indicator="#search-indicator",
                             hx_include="#icon-search-input",
+                            on_keydown="if(event.key==='Enter') { event.preventDefault(); document.getElementById('search-online-btn').click(); }",
                         ),
                         d.Button(
+                            id="search-online-btn",
                             classes="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 whitespace-nowrap",
                             type="button",
                             hx_get="/icons/grid?source=online&page=1&per_page=12",

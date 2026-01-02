@@ -6,7 +6,6 @@ import os
 import threading
 import time
 import webbrowser
-from typing import Optional
 
 import typer
 import uvicorn
@@ -43,7 +42,7 @@ def serve(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Server host"),
     port: int = typer.Option(8000, "--port", "-p", help="Server port"),
     reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload on code changes"),
-    no_browser: bool = typer.Option(False, "--no-browser", help="Don't automatically open browser"),
+    browser: bool = typer.Option(False, "--browser", help="Automatically open browser"),
     log_level: str = typer.Option("info", "--log-level", "-l", help="Logging level"),
     debug: bool = typer.Option(
         False, "--debug", "-d", help="Enable debug mode (debug logging + debug output directory)"
@@ -56,7 +55,7 @@ def serve(
     url = f"http://{host}:{port}"
 
     # Open browser if requested
-    if not no_browser:
+    if browser:
         open_browser(url, delay=1.5)
 
     logger.info(f"Starting Yoto Web Server at {url}")

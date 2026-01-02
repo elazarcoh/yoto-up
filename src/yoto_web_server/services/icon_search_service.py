@@ -18,7 +18,7 @@ from loguru import logger
 from yoto_web_server.utils.sanitation import sanitize_filename
 
 if TYPE_CHECKING:
-    from yoto_web_server.models import DisplayIcon
+    from yoto_web_server.api.models import DisplayIcon
 
 
 class SearchSource(str, Enum):
@@ -52,26 +52,33 @@ class IconSearchService:
         if not self.yotoicons_cache_dir or not self.yotoicons_cache_dir.exists():
             return
 
-        from yoto_web_server.models import DisplayIcon
+        from yoto_web_server.api.models import DisplayIcon
 
         for icon_file in self.yotoicons_cache_dir.glob("*.json"):
             try:
                 with icon_file.open() as f:
-                    icon = DisplayIcon.model_validate_json(f.read())
-                    self._yotoicons_cache[icon.mediaId] = icon
-                    logger.debug(f"Loaded yotoicon from cache: {icon.mediaId}")
+                    data = f.read()
+                    try:
+                        # Try loading as DisplayIcon first (new format)
+                        icon = DisplayIcon.model_validate_json(data)
+                        self._yotoicons_cache[icon.media_id] = icon
+                        logger.debug(f"Loaded yotoicon from cache: {icon.media_id}")
+                    except Exception as e:
+                        # If DisplayIcon validation fails, skip this file
+                        # (likely old YotoIconsSearchResult format that's no longer compatible)
+                        logger.debug(f"Skipping incompatible cache file {icon_file.name}: {type(e).__name__}")
             except Exception as e:
-                logger.warning(f"Failed to load yotoicon cache file {icon_file}: {e}")
+                logger.debug(f"Failed to read yotoicon cache file {icon_file}: {e}")
 
     def add_yotoicons_to_cache(self, icons: list[DisplayIcon]) -> None:
         """Add yotoicons to the in-memory and disk cache."""
 
         for icon in icons:
-            self._yotoicons_cache[icon.mediaId] = icon
+            self._yotoicons_cache[icon.media_id] = icon
 
             # Save to disk
             if self.yotoicons_cache_dir:
-                cache_file = self.yotoicons_cache_dir / f"{sanitize_filename(icon.mediaId)}.json"
+                cache_file = self.yotoicons_cache_dir / f"{sanitize_filename(icon.media_id)}.json"
                 try:
                     cache_file.write_text(icon.model_dump_json())
                 except Exception as e:

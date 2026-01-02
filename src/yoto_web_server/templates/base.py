@@ -83,6 +83,24 @@ class BaseLayout(Component):
                             @apply pointer-events-auto;
                         }
                     }
+                    /* YotoIcons badge styling */
+                    button[data-yotoicons="true"]::after {
+                        content: "y";
+                        position: absolute;
+                        top: 4px;
+                        left: 4px;
+                        width: 16px;
+                        height: 16px;
+                        background-color: #f97316;
+                        border-radius: 9999px;
+                        border: 1px solid #c2410c;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        color: white;
+                        font-size: 10px;
+                        font-weight: bold;
+                    }
                 """),
             ),
             d.Body(classes="bg-gray-50 min-h-screen flex flex-col")(

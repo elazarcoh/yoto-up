@@ -193,10 +193,3 @@ async def get_icon_media(
             )("⚠️")
         )
         return polling_container
-    """Search icons and return partial results for HTMX."""
-    try:
-        icons = icon_service.search_icons(q) if q else icon_service.get_public_icons()[:100]
-        return render_partial(IconSearchResults(icons=icons, query=q))
-    except Exception as e:
-        logger.error(f"Error searching icons: {e}")
-        return render_partial(IconSearchResults(icons=[], query=q, error=str(e)))
