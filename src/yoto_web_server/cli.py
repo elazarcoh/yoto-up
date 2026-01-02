@@ -9,6 +9,7 @@ import webbrowser
 
 import typer
 import uvicorn
+from dotenv import load_dotenv
 from loguru import logger
 
 from yoto_web_server.core.config import get_settings
@@ -39,8 +40,18 @@ def open_browser(url: str, delay: float = 1.0) -> None:
 
 @app.command()
 def serve(
-    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Server host"),
-    port: int = typer.Option(8000, "--port", "-p", help="Server port"),
+    host: str | None = typer.Option(
+        None,
+        "--host",
+        "-h",
+        help="Server host (env: YOTO_UP_HOST or HOST). Default: 127.0.0.1",
+    ),
+    port: int | None = typer.Option(
+        None,
+        "--port",
+        "-p",
+        help="Server port (env: YOTO_UP_PORT or PORT). Default: 8000",
+    ),
     reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload on code changes"),
     browser: bool = typer.Option(False, "--browser", help="Automatically open browser"),
     log_level: str = typer.Option("info", "--log-level", "-l", help="Logging level"),
@@ -50,9 +61,30 @@ def serve(
     workers: int = typer.Option(1, "--workers", "-w", help="Number of worker processes"),
 ) -> None:
     """Start the Yoto Web Server."""
+    load_dotenv()
+
     configure_logging(log_level=log_level, debug=debug)
 
-    url = f"http://{host}:{port}"
+    # Precedence: CLI args > environment variables > defaults
+    env_host = os.getenv("YOTO_UP_HOST") or os.getenv("HOST")
+    resolved_host = host or env_host or "127.0.0.1"
+
+    resolved_port = None
+    if port is not None:
+        resolved_port = port
+    else:
+        for name in ("YOTO_UP_PORT", "PORT"):
+            v = os.getenv(name)
+            if v:
+                try:
+                    resolved_port = int(v)
+                    break
+                except ValueError:
+                    logger.warning(f"Environment variable {name} value is not an int: {v}")
+        if resolved_port is None:
+            resolved_port = 8000
+
+    url = f"http://{resolved_host}:{resolved_port}"
 
     # Open browser if requested
     if browser:
@@ -79,8 +111,8 @@ def serve(
     # Run the server
     uvicorn.run(
         "yoto_web_server.main:app",
-        host=host,
-        port=port,
+        host=resolved_host,
+        port=resolved_port,
         reload=reload,
         reload_dirs=HERE,
         log_level=actual_log_level,
