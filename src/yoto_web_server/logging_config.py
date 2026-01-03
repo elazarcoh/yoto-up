@@ -111,7 +111,7 @@ def configure_logging(log_level: str = "info", debug: bool = False):
         "<level>{level: <8}</level> | "
         "<cyan>{module}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
         "<level>{message}</level>",
-        level='INFO',
+        level="INFO",
         colorize=True,
         filter=polling_filter,
     )

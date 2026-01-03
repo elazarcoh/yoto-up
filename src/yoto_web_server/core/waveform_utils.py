@@ -8,6 +8,7 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 import matplotlib.pyplot as plt
 
+
 def audio_stats(filepath, waveform_cache):
     """
     Calculate waveform, max amplitude, average amplitude, LUFS, extension, and filepath for an audio file.
@@ -20,8 +21,8 @@ def audio_stats(filepath, waveform_cache):
     try:
         audio = None
         framerate = 44100
-        if ext == '.wav':
-            with contextlib.closing(wave.open(filepath, 'rb')) as wf:
+        if ext == ".wav":
+            with contextlib.closing(wave.open(filepath, "rb")) as wf:
                 n_frames = wf.getnframes()
                 framerate = wf.getframerate()
                 frames = wf.readframes(n_frames)
@@ -41,10 +42,11 @@ def audio_stats(filepath, waveform_cache):
                     audio = audio.astype(np.float32) / 32768.0
                 elif dtype == np.uint8:
                     audio = (audio.astype(np.float32) - 128) / 128.0
-        elif ext == '.mp3':
+        elif ext == ".mp3":
             try:
                 from pydub import AudioSegment
-                audio_seg = AudioSegment.from_file(filepath, format='mp3')
+
+                audio_seg = AudioSegment.from_file(filepath, format="mp3")
                 samples = np.array(audio_seg.get_array_of_samples())
                 if audio_seg.channels > 1:
                     samples = samples.reshape((-1, audio_seg.channels)).mean(axis=1)
@@ -58,6 +60,7 @@ def audio_stats(filepath, waveform_cache):
             except Exception:
                 try:
                     import librosa
+
                     audio, framerate = librosa.load(filepath, sr=None, mono=True)
                 except Exception:
                     return None, None, None, None, None, None
@@ -74,6 +77,7 @@ def audio_stats(filepath, waveform_cache):
         else:
             try:
                 import pyloudnorm as pyln
+
                 meter = pyln.Meter(framerate)
                 lufs = float(meter.integrated_loudness(audio))
             except Exception:
@@ -88,15 +92,19 @@ def audio_stats(filepath, waveform_cache):
         waveform_cache[filepath] = result
         return result
 
+
 def batch_audio_stats(files, waveform_cache, progress_callback=None):
     """
     Calculate audio stats for a list of files in parallel, updating progress via callback.
     Returns a list of results in the same order as files.
     """
     from concurrent.futures import as_completed
+
     stats_results = [None] * len(files)
     with ThreadPoolExecutor() as executor:
-        future_to_idx = {executor.submit(audio_stats, f, waveform_cache): i for i, f in enumerate(files)}
+        future_to_idx = {
+            executor.submit(audio_stats, f, waveform_cache): i for i, f in enumerate(files)
+        }
         completed = 0
         total = len(files)
         for future in as_completed(future_to_idx):
@@ -106,6 +114,7 @@ def batch_audio_stats(files, waveform_cache, progress_callback=None):
             if progress_callback:
                 progress_callback(completed, total)
     return stats_results
+
 
 def generate_waveform_image(
     input_path: str,
@@ -120,10 +129,10 @@ def generate_waveform_image(
     # Use a temporary cache for this single operation
     cache = {}
     audio, max_amp, avg_amp, lufs, ext, filepath = audio_stats(input_path, cache)
-    
+
     if audio is None:
         raise ValueError(f"Could not load audio from {input_path}")
-        
+
     # Downsample for plotting
     max_points = width * 2  # 2 points per pixel column roughly
     n = len(audio)
@@ -132,18 +141,18 @@ def generate_waveform_image(
         audio_plot = audio[idx]
     else:
         audio_plot = audio
-        
+
     # Create plot
     # Convert hex color to matplotlib color
-    
-    fig, ax = plt.subplots(figsize=(width/100, height/100), dpi=100)
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
     # Remove axes
-    ax.axis('off')
+    ax.axis("off")
     # Remove margins
     plt.subplots_adjust(left=0, right=1, top=1, bottom=0)
-    
+
     ax.plot(audio_plot, color=color, linewidth=0.5)
-    
+
     # Save
-    plt.savefig(output_path, format='png', transparent=True, bbox_inches='tight', pad_inches=0)
+    plt.savefig(output_path, format="png", transparent=True, bbox_inches="tight", pad_inches=0)
     plt.close(fig)

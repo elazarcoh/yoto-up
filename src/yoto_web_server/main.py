@@ -21,9 +21,10 @@ from pydom.element import Element
 from yoto_web_server.api.exceptions import YotoAuthError
 from yoto_web_server.container import Container
 from yoto_web_server.dependencies import AuthenticationError, YotoApiDep
+from yoto_web_server.features.youtube import routes as youtube
 from yoto_web_server.logging_config import configure_logging
 from yoto_web_server.middleware.session_middleware import SessionMiddleware
-from yoto_web_server.routers import auth, devices, icons, playlists
+from yoto_web_server.routers import auth, devices, icons, optional_features, playlists
 from yoto_web_server.templates.base import render_page
 from yoto_web_server.templates.home import HomePage
 
@@ -67,6 +68,22 @@ async def lifespan(app: FastAPI):
         logger.info("Icon service initialized successfully")
     except Exception as e:
         logger.warning(f"Icon service initialization failed: {e}")
+
+    # Initialize optional features
+    optional_features_service = container.optional_features_service()
+    youtube_feature = container.youtube_feature()
+    example_feature_b = container.example_feature_b()
+
+    optional_features_service.register(youtube_feature)
+    optional_features_service.register(example_feature_b)
+    optional_features_service.verify_all()
+    logger.info("Optional features initialized and verified")
+
+    # Register URL providers with the upload orchestrator
+    upload_orchestrator = container.upload_orchestrator()
+    upload_orchestrator.register_url_provider("youtube", youtube_feature)
+    upload_orchestrator.register_metadata_provider("youtube", youtube_feature)
+    logger.info("YouTube registered as URL and metadata provider for upload orchestrator")
 
     yield
 
@@ -181,6 +198,8 @@ app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(icons.router, tags=["Icons"])
 app.include_router(playlists.router, prefix="/playlists", tags=["Playlists"])
 app.include_router(devices.router, prefix="/devices", tags=["Devices"])
+app.include_router(optional_features.router, tags=["Optional Features"])
+app.include_router(youtube.router, tags=["YouTube"])
 
 
 @app.get("/", response_class=HTMLResponse)

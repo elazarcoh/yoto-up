@@ -92,15 +92,13 @@ class ChapterItem(Component):
                         d.Div(
                             id=f"overlay-label-{self.index}",
                             classes="w-6 h-8 bg-black bg-opacity-70 rounded flex items-center justify-center text-xs font-bold text-white cursor-pointer hover:bg-opacity-90 transition-all"
-                            if self.chapter.overlay_label else
-                            "w-6 h-8 bg-gray-300 hover:bg-gray-400 rounded flex items-center justify-center text-xs font-bold text-gray-600 cursor-pointer transition-all",
+                            if self.chapter.overlay_label
+                            else "w-6 h-8 bg-gray-300 hover:bg-gray-400 rounded flex items-center justify-center text-xs font-bold text-gray-600 cursor-pointer transition-all",
                             hx_get=f"/playlists/{self.playlist_id}/edit-overlay-label/{self.index}",
                             hx_target=f"#overlay-label-{self.index}",
                             hx_swap="outerHTML",
                             title="Click to add or edit label (max 3 characters)",
-                        )(
-                            self.chapter.overlay_label if self.chapter.overlay_label else "+"
-                        ),
+                        )(self.chapter.overlay_label if self.chapter.overlay_label else "+"),
                         d.Button(
                             type="button",
                             id=f"chapter-placeholder-{html_id_safe(self.chapter.key)}",

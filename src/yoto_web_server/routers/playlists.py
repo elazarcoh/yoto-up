@@ -6,8 +6,6 @@ Handles playlist (card library) listing and management.
 
 import base64
 import json
-import pathlib
-import tempfile
 from typing import Annotated, Any
 
 import httpx
@@ -38,14 +36,17 @@ from yoto_web_server.api.models import (
 from yoto_web_server.dependencies import (
     ContainerDep,
     IconServiceDep,
+    UploadOrchestratorDep,
     UploadProcessingServiceDep,
     UploadSessionServiceDep,
     YotoApiDep,
+    YouTubeFeatureDep,
 )
 from yoto_web_server.models import (
     CardFilterRequest,
     DeletePlaylistResponse,
     FileUploadResponse,
+    FileUploadStatus,
     ReorderChaptersRequest,
     ReorderChaptersResponse,
     UploadSessionInitRequest,
@@ -688,14 +689,14 @@ async def upload_file_to_session(
     file: UploadFile = File(...),
     *,
     upload_session_service: UploadSessionServiceDep,
-    upload_processing_service: UploadProcessingServiceDep,
+    upload_orchestrator: UploadOrchestratorDep,
     yoto_client: YotoApiDep,
 ) -> FileUploadResponse:
     """
-    Upload a single file to an upload session.
+    Upload a single file to an upload session using unified orchestrator.
 
-    Files are stored temporarily and added to the session's file list.
-    Returns file_id and current session status.
+    Files are registered with the orchestrator which handles saving and queuing
+    for processing through the unified pipeline.
 
     Args:
         playlist_id: ID of the playlist
@@ -717,53 +718,24 @@ async def upload_file_to_session(
         if file.filename is None:
             raise HTTPException(status_code=400, detail="No file uploaded")
 
-        # Create temp directory for this session
-        temp_base = pathlib.Path(tempfile.gettempdir()) / "yoto_web_uploads" / session_id
-        temp_base.mkdir(parents=True, exist_ok=True)
-
-        # Save file to temp location
-        temp_path = temp_base / file.filename
-
-        # Read and save the file
+        # Read file content
         content = await file.read()
-        with open(temp_path, "wb") as f:
-            f.write(content)
 
-        # Register file in session
-        file_status = upload_session_service.register_file(
+        # Register and process file through orchestrator
+        file_status = await upload_orchestrator.register_and_process_file(
             session_id=session_id,
+            playlist_id=playlist_id,
             filename=file.filename,
-            size_bytes=len(content),
+            file_content=content,
         )
 
         if not file_status:
             raise HTTPException(status_code=500, detail="Failed to register file")
 
-        # Mark as uploaded (waiting for processing)
-        upload_session_service.mark_file_uploaded(
-            session_id=session_id,
-            file_id=file_status.file_id,
-            temp_path=str(temp_path),
-        )
-
         # Get updated session
         updated_session = upload_session_service.get_session(session_id)
 
-        if updated_session:
-            all_files_required = updated_session.normalize_batch
-            if not all_files_required:
-                updated_session.files_to_process.append(file_status.file_id)
-                upload_processing_service.process_session_async(
-                    session_id=session_id,
-                    playlist_id=playlist_id,
-                )
-            logger.info(
-                f"Queued file {file.filename} (id: {file_status.file_id}) for parallel processing in session {session_id}"
-            )
-
-        logger.info(
-            f"File {file.filename} uploaded to session {session_id}, temp path: {temp_path}"
-        )
+        logger.info(f"File {file.filename} registered through orchestrator in session {session_id}")
 
         return FileUploadResponse(
             status="file_uploaded",
@@ -842,12 +814,101 @@ async def register_files_for_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{playlist_id}/upload-session/{session_id}/youtube-urls", response_class=JSONResponse)
+async def upload_urls_to_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    request: Request,
+    upload_session_service: UploadSessionServiceDep,
+    upload_orchestrator: UploadOrchestratorDep,
+    yoto_client: YotoApiDep,
+    youtube_urls: Annotated[str, Form(description="JSON array of YouTube URLs to download")],
+) -> dict[str, Any]:
+    """
+    Register YouTube URLs for download in an upload session using unified orchestrator.
+
+    URLs are registered with the orchestrator which:
+    1. Routes to the YouTube service via "youtube:" scheme
+    2. Queues background download tasks
+    3. Automatically queues for processing once files are available
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        youtube_urls: JSON array of YouTube URL strings
+
+    Returns:
+        JSON with registered URLs and updated session status
+    """
+    try:
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Parse the JSON array of URLs
+        import json
+
+        try:
+            urls = json.loads(youtube_urls)
+            if not isinstance(urls, list):
+                urls = [youtube_urls]  # Handle single URL string
+        except json.JSONDecodeError:
+            urls = [youtube_urls]  # Fallback to single URL
+
+        if not urls:
+            raise HTTPException(status_code=400, detail="No YouTube URLs provided")
+
+        # Register each URL through the orchestrator
+        registered_ids = []
+        for url in urls:
+            url = url.strip()
+            if not url:
+                continue
+
+            # Use scheme-based routing: "youtube:VIDEO_ID_OR_URL"
+            url_with_scheme = f"youtube:{url}"
+
+            file_status = await upload_orchestrator.register_and_process_url(
+                session_id=session_id,
+                playlist_id=playlist_id,
+                url_with_scheme=url_with_scheme,
+            )
+
+            if file_status:
+                registered_ids.append(file_status.file_id)
+                logger.info(
+                    f"Registered YouTube URL {url} as file {file_status.file_id} in session {session_id} "
+                    f"(scheme: {url_with_scheme})"
+                )
+
+        # Get updated session
+        updated_session = upload_session_service.get_session(session_id)
+
+        return {
+            "status": "ok",
+            "message": f"Registered {len(registered_ids)} YouTube URLs for download",
+            "registered_ids": registered_ids,
+            "session_id": session_id,
+            "session": updated_session.model_dump() if updated_session else None,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to register YouTube URLs for session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{playlist_id}/upload-session/{session_id}/finalize", response_class=JSONResponse)
 async def finalize_upload_session(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
     request: Request,
-    container: ContainerDep,
+    upload_session_service: UploadSessionServiceDep,
     upload_processing_service: UploadProcessingServiceDep,
     yoto_client: YotoApiDep,
 ) -> dict[str, Any]:
@@ -855,8 +916,9 @@ async def finalize_upload_session(
     Finalize an upload session and start processing (in batch mode only).
 
     This should be called AFTER all files have been uploaded.
+    - URLs are handled asynchronously by the orchestrator (background downloads)
     - In batch mode: starts the background processing with batch normalization
-    - In non-batch mode: just marks session as complete (processing already started per-file)
+    - In non-batch mode: processing already started per-file
 
     Args:
         playlist_id: ID of the playlist
@@ -866,8 +928,6 @@ async def finalize_upload_session(
         JSON confirmation
     """
     try:
-        upload_session_service = container.upload_session_service()
-
         # Verify session exists
         session = upload_session_service.get_session(session_id)
         if not session:
@@ -877,16 +937,26 @@ async def finalize_upload_session(
             raise HTTPException(status_code=403, detail="Session playlist mismatch")
 
         # Mark session as all files uploaded
+        # Note: URL downloads happen asynchronously in the orchestrator
         session.all_files_uploaded = True
 
         # Only start processing in batch mode
         # In non-batch mode, files were already queued as they were uploaded
         if session.normalize_batch:
             # In batch mode, add all files to the processing queue now
-            session.files_to_process = [f.file_id for f in session.files]
-            upload_processing_service.process_session_async(session_id, playlist_id)
-
-            logger.info(f"Finalized batch mode upload session {session_id}, starting processing")
+            session.files_to_process = [
+                f.file_id for f in session.files if f.status != FileUploadStatus.ERROR
+            ]
+            if session.files_to_process:
+                upload_processing_service.process_session_async(session_id, playlist_id)
+                logger.info(
+                    f"Finalized batch mode upload session {session_id}, starting processing"
+                )
+            else:
+                session.session_done = True
+                logger.error(
+                    f"Finalized batch mode upload session {session_id}, but all files had errors"
+                )
         else:
             logger.info(
                 f"Finalized non-batch mode upload session {session_id}, processing already started per-file"
@@ -1044,9 +1114,8 @@ async def delete_upload_session(
 async def stop_upload_session(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
-    request: Request,
-    container: ContainerDep,
-    yoto_client: YotoApiDep,
+    upload_processing_service: UploadProcessingServiceDep,
+    upload_session_service: UploadSessionServiceDep,
 ) -> str:
     """
     Stop an upload session that is currently processing.
@@ -1063,8 +1132,6 @@ async def stop_upload_session(
     """
     try:
         # Get upload session service
-        upload_session_service = container.upload_session_service()
-        upload_processing_service = container.upload_processing_service()
 
         # Verify session exists
         session = upload_session_service.get_session(session_id)
@@ -1120,6 +1187,7 @@ async def get_upload_modal(
     request: Request,
     playlist_id: Annotated[str, Path()],
     yoto_client: YotoApiDep,
+    youtube_feature: YouTubeFeatureDep,
 ) -> str:
     """
     Get upload modal HTML.
@@ -1127,7 +1195,10 @@ async def get_upload_modal(
     Returns upload modal partial for HTMX.
     """
     try:
-        return render_partial(UploadModalPartial(playlist_id=playlist_id))
+        youtube_available = youtube_feature.verify().valid
+        return render_partial(
+            UploadModalPartial(playlist_id=playlist_id, youtube_available=youtube_available)
+        )
     except Exception as e:
         logger.error(f"Failed to get upload modal: {e}")
         raise HTTPException(status_code=500, detail=str(e))

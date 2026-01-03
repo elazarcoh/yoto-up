@@ -515,7 +515,7 @@ class TranscodedAudioResponse(BaseModel):
             sample_rate: int = Field(..., alias="sampleRate")
             channels: str
             bitrate: int
-            metadata: dict[str, Any]
+            metadata: dict[str, Any] = Field(default_factory=dict)
             input_format: str = Field(..., alias="inputFormat")
             file_size: int | None = Field(default=None, alias="fileSize")
 

@@ -31,13 +31,11 @@ class ConfigSection(Component):
         return d.Div(classes="mb-8")(
             d.Div(classes="mb-4")(
                 d.H3(classes="text-lg font-semibold text-gray-900")(self.title),
-                d.P(classes="text-sm text-gray-600 mt-1")(
-                    self.description or ""
-                ) if self.description else None,
+                d.P(classes="text-sm text-gray-600 mt-1")(self.description or "")
+                if self.description
+                else None,
             ),
-            d.Div(classes="bg-white rounded-lg shadow divide-y divide-gray-200")(
-                *self.children
-            ),
+            d.Div(classes="bg-white rounded-lg shadow divide-y divide-gray-200")(*self.children),
         )
 
 
@@ -71,16 +69,16 @@ class SliderSetting(Component):
         return d.Div(classes="px-6 py-4 hover:bg-gray-50 transition-colors")(
             d.Div(classes="flex justify-between items-start mb-2")(
                 d.Div()(
-                    d.Label(classes="text-sm font-medium text-gray-700")(
-                        self.label
-                    ),
+                    d.Label(classes="text-sm font-medium text-gray-700")(self.label),
                     d.P(classes="text-xs text-gray-500 mt-1")(self.help_text)
                     if self.help_text
                     else None,
                 ),
                 d.Span(
                     classes="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-indigo-100 text-indigo-800"
-                )(str(self.value)) if self.show_value else None,
+                )(str(self.value))
+                if self.show_value
+                else None,
             ),
             d.Input(
                 type="range",
@@ -119,9 +117,7 @@ class ToggleSetting(Component):
         return d.Div(classes="px-6 py-4 hover:bg-gray-50 transition-colors")(
             d.Div(classes="flex justify-between items-center")(
                 d.Div()(
-                    d.Label(classes="text-sm font-medium text-gray-700")(
-                        self.label
-                    ),
+                    d.Label(classes="text-sm font-medium text-gray-700")(self.label),
                     d.P(classes="text-xs text-gray-500 mt-1")(self.help_text)
                     if self.help_text
                     else None,
@@ -183,12 +179,7 @@ class SelectSetting(Component):
                     hx_post=f"/devices/{self.device_id}/config",
                     hx_trigger="change",
                     hx_swap="none",
-                )(
-                    *[
-                        d.Option(value=k)(v)
-                        for k, v in self.options.items()
-                    ]
-                ),
+                )(*[d.Option(value=k)(v) for k, v in self.options.items()]),
             ),
         )
 
@@ -288,9 +279,7 @@ class TabGroup(Component):
         self.tab_names = list(tabs.keys())
 
     def render(self):
-        return d.Div(
-            **{"x-data": "{activeTab: 'general'}", ":class": "{}"}
-        )(
+        return d.Div(**{"x-data": "{activeTab: 'general'}", ":class": "{}"})(
             # Tab buttons
             d.Div(classes="border-b border-gray-200 mb-6")(
                 d.Nav(classes="-mb-px flex space-x-8")(
@@ -299,8 +288,11 @@ class TabGroup(Component):
                             type="button",
                             classes=f"whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors "
                             f"{'border-indigo-500 text-indigo-600' if i == 0 else 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}",
-                            **{"@click": f"activeTab = '{tab_name}'", ":class": f"{{active: activeTab === '{tab_name}' }}"},
-                        )(tab_name.replace('_', ' ').title())
+                            **{
+                                "@click": f"activeTab = '{tab_name}'",
+                                ":class": f"{{active: activeTab === '{tab_name}' }}",
+                            },
+                        )(tab_name.replace("_", " ").title())
                         for i, tab_name in enumerate(self.tab_names)
                     ]
                 )
@@ -309,7 +301,7 @@ class TabGroup(Component):
             *[
                 d.Div(
                     **{":hidden": f"activeTab !== '{tab_name}'"},
-                    classes="transition-opacity duration-200"
+                    classes="transition-opacity duration-200",
                 )(content)
                 for tab_name, content in self.tabs.items()
             ],

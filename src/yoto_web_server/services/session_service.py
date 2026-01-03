@@ -47,7 +47,9 @@ class CookiePayload:
 
     def to_string(self) -> str:
         """Serialize to string for cookie storage."""
-        return f"{self.session_id}|{self.refresh_token}|{self.refresh_token_expiry}|{self.created_at}"
+        return (
+            f"{self.session_id}|{self.refresh_token}|{self.refresh_token_expiry}|{self.created_at}"
+        )
 
     @classmethod
     def from_string(cls, data: str) -> "CookiePayload":

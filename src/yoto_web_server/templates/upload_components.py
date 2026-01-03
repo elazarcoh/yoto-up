@@ -16,11 +16,12 @@ from yoto_web_server.utils.style import classnames
 
 
 class UploadModalPartial(Component):
-    """Server-rendered upload modal - Script handles file ops, HTMX handles UI."""
+    """Server-rendered upload modal with file and YouTube URL support."""
 
-    def __init__(self, *, playlist_id: str):
+    def __init__(self, *, playlist_id: str, youtube_available: bool = False):
         super().__init__()
         self.playlist_id = playlist_id
+        self.youtube_available = youtube_available
 
     def render(self):
         return d.Div(
@@ -33,9 +34,9 @@ class UploadModalPartial(Component):
             )(
                 # Header
                 d.Div(
-                    classes="sticky top-0 px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center"
+                    classes="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center"
                 )(
-                    d.H3(classes="text-2xl font-bold text-gray-900")("Upload Files"),
+                    d.H3(classes="text-2xl font-bold text-gray-900")("Upload to Playlist"),
                     d.Button(
                         type="button",
                         classes="text-gray-500 hover:text-gray-700 text-2xl",
@@ -43,59 +44,77 @@ class UploadModalPartial(Component):
                     )("✕"),
                 ),
                 # Main content area
-                d.Div(classes="flex-1 overflow-y-auto")(
-                    # Selection state
-                    d.Div(id="upload-selection-state", classes="px-6 py-6 space-y-6")(
-                        # Pending Files Section
-                        d.Div(classes="space-y-3")(
-                            d.Label(classes="block text-sm font-semibold text-gray-900")(
-                                "📋 Pending Files"
-                            ),
-                            d.Div(
-                                id="pending-files-list",
-                                classes="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50",
-                            )(
-                                d.Div(classes="text-sm text-gray-500 text-center py-2")(
-                                    "No files selected"
-                                )
-                            ),
+                d.Div(classes="flex-1 overflow-y-auto px-6 py-6 space-y-6")(
+                    # Pending Files Section
+                    d.Div(classes="space-y-3")(
+                        d.Label(classes="block text-sm font-semibold text-gray-900")(
+                            "📋 Pending Files"
                         ),
-                        # File/Folder selection buttons
-                        d.Div(classes="flex gap-3")(
-                            d.Button(
-                                type="button",
-                                id="select-files-btn",
-                                classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
-                            )(
-                                d.Div(classes="text-3xl mb-1")("📄"),
-                                d.Div(classes="text-sm font-medium text-gray-700")("Select Files"),
-                            ),
-                            d.Button(
-                                type="button",
-                                id="select-folder-btn",
-                                classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
-                            )(
-                                d.Div(classes="text-3xl mb-1")("📁"),
-                                d.Div(classes="text-sm font-medium text-gray-700")("Select Folder"),
-                            ),
+                        d.Div(
+                            id="pending-files-list",
+                            classes="max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50 min-h-12",
+                        )(
+                            d.Div(classes="text-sm text-gray-500 text-center py-2")(
+                                "No files selected"
+                            )
                         ),
-                        # Upload options
-                        self._render_upload_options(),
                     ),
-                    # Uploading state
-                    d.Div(id="upload-uploading-state", classes="hidden px-6 py-6")(
-                        d.Div(classes="text-center")(
-                            d.Div(classes="animate-spin text-4xl mb-4")("⏳"),
-                            d.P(classes="text-lg font-medium")("Uploading..."),
-                            d.Div(classes="w-full bg-gray-200 rounded-full h-3 mt-4")(
+                    # Pending URLs Section (if YouTube available)
+                    *(
+                        [
+                            d.Div(classes="space-y-3")(
+                                d.Label(classes="block text-sm font-semibold text-gray-900")(
+                                    "▶️ Pending URLs"
+                                ),
                                 d.Div(
-                                    id="upload-progress-bar",
-                                    classes="bg-indigo-600 h-3 rounded-full transition-all",
-                                    style="width: 0%",
-                                )()
-                            ),
-                        ),
+                                    id="pending-urls-list",
+                                    classes="group max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3 bg-gray-50 min-h-12",
+                                )(
+                                    d.Div(
+                                        classes="text-sm text-gray-500 text-center py-2 hidden group-empty:block"
+                                    )("No URLs added")
+                                ),
+                            )
+                        ]
+                        if self.youtube_available
+                        else []
                     ),
+                    # File/Folder selection buttons
+                    d.Div(classes="flex gap-3")(
+                        d.Button(
+                            type="button",
+                            id="select-files-btn",
+                            classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
+                        )(
+                            d.Div(classes="text-3xl mb-1")("📄"),
+                            d.Div(classes="text-sm font-medium text-gray-700")("Select Files"),
+                        ),
+                        d.Button(
+                            type="button",
+                            id="select-folder-btn",
+                            classes="flex-1 px-4 py-3 border-2 border-dashed border-indigo-300 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-colors text-center",
+                        )(
+                            d.Div(classes="text-3xl mb-1")("📁"),
+                            d.Div(classes="text-sm font-medium text-gray-700")("Select Folder"),
+                        ),
+                        d.Button(
+                            type="button",
+                            id="add-youtube-url-btn",
+                            classes="flex-1 px-4 py-3 border-2 border-dashed border-red-300 rounded-lg hover:border-red-500 hover:bg-red-50 transition-colors text-center",
+                            hx_get="/youtube/upload-modal/",
+                            hx_target="#youtube-upload-modal",
+                            hx_swap="outerHTML",
+                        )("▶️ From YouTube")
+                        if self.youtube_available
+                        else None,
+                    ),
+                    # YouTube Modal Container
+                    d.Div(
+                        id="youtube-upload-modal",
+                        classes="hidden",
+                    ),
+                    # Upload options
+                    self._render_upload_options(),
                 ),
                 # Footer
                 d.Div(
@@ -120,7 +139,36 @@ class UploadModalPartial(Component):
             {{
 
             const pendingFiles = [];
+            const pendingUrls = [];
             let currentPlaylistId = '{self.playlist_id}';
+
+            // Listen for YouTube URLs being added to the pending URLs list
+            const pendingUrlsList = document.getElementById('pending-urls-list');
+            if (pendingUrlsList) {{
+                const observer = new MutationObserver(() => {{
+                    updateStartUploadButton();
+                }});
+                observer.observe(pendingUrlsList, {{ childList: true }});
+            }}
+
+            function getPendingYouTubeUrls() {{
+                const urlsList = document.getElementById('pending-urls-list');
+                const urls = [];
+                if (urlsList) {{
+                    urlsList.querySelectorAll('[id^="youtube-pending-"]').forEach(entry => {{
+                        const url = entry.getAttribute('data-youtube-url');
+                        if (url) urls.push(url);
+                    }});
+                }}
+                return urls;
+            }}
+
+            function updateStartUploadButton() {{
+                const files = pendingFiles.length;
+                const urls = getPendingYouTubeUrls().length;
+                const uploadBtn = document.getElementById('start-upload-btn');
+                uploadBtn.disabled = files + urls === 0;
+            }}
 
             // File selection handlers
             document.getElementById('select-files-btn')?.addEventListener('click', async () => {{
@@ -220,10 +268,13 @@ class UploadModalPartial(Component):
 
             // Upload handler
             document.getElementById('start-upload-btn')?.addEventListener('click', async () => {{
-                if (pendingFiles.length === 0) return;
+                const files = pendingFiles;
+                const urls = getPendingYouTubeUrls();
+                if (files.length === 0 && urls.length === 0) return;
 
-                document.getElementById('upload-selection-state').classList.add('hidden');
-                document.getElementById('upload-uploading-state').classList.remove('hidden');
+                // Disable the button to prevent multiple clicks
+                const uploadBtn = document.getElementById('start-upload-btn');
+                uploadBtn.disabled = true;
 
                 // Get form options
                 const uploadMode = document.querySelector('input[name="upload_mode"]:checked')?.value || 'chapters';
@@ -258,23 +309,38 @@ class UploadModalPartial(Component):
 
                     const sessionData = await sessionRes.json();
                     const sessionId = sessionData.session_id;
-                    const totalFiles = pendingFiles.length;
 
-                    // Step 2: Pre-register all files with the server
-                    // This tells the server how many files to expect, important for batch normalization
-                    const registerRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/register-files`, {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
-                        body: new URLSearchParams({{ file_count: totalFiles }}).toString()
-                    }});
+                    // Step 2: Register YouTube URLs if any
+                    if (urls.length > 0) {{
+                        const urlsRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/youtube-urls`, {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
+                            body: new URLSearchParams({{ youtube_urls: JSON.stringify(urls) }}).toString()
+                        }});
 
-                    if (!registerRes.ok) {{
-                        throw new Error(`Failed to register files: ${{registerRes.statusText}}`);
+                        if (!urlsRes.ok) {{
+                            console.error(`Failed to register YouTube URLs: ${{urlsRes.statusText}}`);
+                        }}
                     }}
 
-                    // Step 3: Upload each file to the session
+                    const totalItems = files.length + urls.length;
+
+                    // Step 3: Pre-register file count if any
+                    if (files.length > 0) {{
+                        const registerRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/register-files`, {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
+                            body: new URLSearchParams({{ file_count: files.length }}).toString()
+                        }});
+
+                        if (!registerRes.ok) {{
+                            throw new Error(`Failed to register files: ${{registerRes.statusText}}`);
+                        }}
+                    }}
+
+                    // Step 4: Upload each file to the session
                     let uploadedCount = 0;
-                    for (const {{ file }} of pendingFiles) {{
+                    for (const {{ file }} of files) {{
                         const formData = new FormData();
                         formData.append('file', file);
 
@@ -287,12 +353,13 @@ class UploadModalPartial(Component):
                             console.error(`Failed to upload ${{file.name}}: ${{uploadRes.statusText}}`);
                         }} else {{
                             uploadedCount++;
-                            const progress = (uploadedCount / totalFiles) * 100;
-                            document.getElementById('upload-progress-bar').style.width = progress + '%';
+                            const progress = totalItems > 0 ? (uploadedCount / totalItems) * 100 : 100;
+                            // Show progress to user
+                            console.log(`Upload progress: ${{progress.toFixed(0)}}%`);
                         }}
                     }}
 
-                    // Step 4: Finalize the session - all files uploaded, ready to process
+                    // Step 5: Finalize the session - all files/URLs registered, ready to process
                     const finalizeRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/finalize`, {{
                         method: 'POST'
                     }});
@@ -301,16 +368,15 @@ class UploadModalPartial(Component):
                         throw new Error(`Failed to finalize upload: ${{finalizeRes.statusText}}`);
                     }}
 
-                    document.getElementById('upload-progress-bar').style.width = '100%';
+                    // Success - close modal and reload playlist
                     setTimeout(() => {{
                         document.getElementById('upload-modal')?.remove();
-                        htmx.ajax('GET', `/playlists/${{currentPlaylistId}}`, {{ target: '#main-content', swap: 'innerHTML' }});
+                        htmx.ajax('GET', `/playlists/${{currentPlaylistId}}`, {{ target: 'body', swap: 'outerHTML' }});
                     }}, 1000);
                 }} catch (err) {{
                     console.error('Upload error:', err);
                     alert('Upload failed: ' + err.message);
-                    document.getElementById('upload-selection-state').classList.remove('hidden');
-                    document.getElementById('upload-uploading-state').classList.add('hidden');
+                    uploadBtn.disabled = false;
                 }}
             }});
 
@@ -781,3 +847,89 @@ class UploadSessionsListPartial(Component):
             d.Span(classes="text-sm text-gray-800")(f"📄 {file.filename}"),
             d.Span(**{"class": f"{color} text-sm font-medium"})(f"{icon} {status_label}"),
         )
+
+
+class YouTubeMetadataPreviewPartial(Component):
+    """HTMX-rendered YouTube metadata preview."""
+
+    def __init__(self, metadata):
+        super().__init__()
+        self.metadata = metadata
+
+    def render(self):
+        """Render the metadata preview HTML to be swapped by HTMX."""
+        return d.Div(
+            classes="flex gap-4",
+            hx_swap_oob="true",  # Out-of-band swap to also show the preview
+        )(
+            d.Img(
+                src=self.metadata.thumbnail_url,
+                alt=self.metadata.title,
+                classes="w-32 h-32 rounded object-cover",
+            ),
+            d.Div(classes="flex-1 space-y-2")(
+                d.H3(classes="text-lg font-semibold")(self.metadata.title),
+                d.P(classes="text-sm text-gray-600")(f"By {self.metadata.uploader}"),
+                d.P(classes="text-sm text-gray-600")(
+                    f"Duration: {self._format_duration(self.metadata.duration_seconds)}"
+                ),
+                d.P(classes="text-sm text-gray-600")(f"Uploaded: {self.metadata.upload_date}"),
+                d.P(classes="text-sm text-gray-500 line-clamp-2")(self.metadata.description),
+                d.Button(
+                    type="button",
+                    classes="mt-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium",
+                    hx_post="",  # Would be filled by JS to add to pending list
+                    id=f"add-youtube-btn-{self.metadata.video_id}",
+                )("+ Add to Upload"),
+            ),
+        )
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        """Format duration in seconds to human-readable format."""
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        return f"{minutes}:{secs:02d}"
+
+
+class YouTubeURLEntryPartial(Component):
+    """URL entry item for pending YouTube URLs list - similar to file entry."""
+
+    def __init__(self, video_id: str, title: str, duration_seconds: int):
+        super().__init__()
+        self.video_id = video_id
+        self.title = title
+        self.duration_seconds = duration_seconds
+
+    def render(self):
+        """Render a URL entry similar to file entry."""
+        duration = self._format_duration(self.duration_seconds)
+        return d.Div(
+            classes="flex items-center justify-between py-2 border-b border-gray-100 last:border-0",
+            data_video_id=self.video_id,
+        )(
+            d.Div(classes="flex-1")(
+                d.Span(classes="text-sm text-gray-800")(f"▶️ {self.title}"),
+                d.Span(classes="block text-xs text-gray-500 mt-1")(f"Duration: {duration}"),
+            ),
+            d.Button(
+                type="button",
+                classes="text-red-500 hover:text-red-700 text-sm font-medium",
+                **xon().click(
+                    f"event.target.closest('div[data-video-id=\"{self.video_id}\"]')?.remove()"
+                ),
+            )("✕"),
+        )
+
+    @staticmethod
+    def _format_duration(seconds: int) -> str:
+        """Format duration in seconds to human-readable format."""
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        return f"{minutes}:{secs:02d}"

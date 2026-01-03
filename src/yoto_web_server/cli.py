@@ -52,11 +52,18 @@ def serve(
         "-p",
         help="Server port (env: YOTO_UP_PORT or PORT). Default: 8000",
     ),
-    reload: bool = typer.Option(False, "--reload", "-r", help="Enable auto-reload on code changes"),
-    browser: bool = typer.Option(False, "--browser", help="Automatically open browser"),
+    reload: bool = typer.Option(
+        False, "--reload/--no-reload", "-r", help="Enable auto-reload on code changes"
+    ),
+    browser: bool = typer.Option(
+        False, "--browser/--no-browser", help="Automatically open browser"
+    ),
     log_level: str = typer.Option("info", "--log-level", "-l", help="Logging level"),
     debug: bool = typer.Option(
-        False, "--debug", "-d", help="Enable debug mode (debug logging + debug output directory)"
+        False,
+        "--debug/--no-debug",
+        "-d",
+        help="Enable debug mode (debug logging + debug output directory)",
     ),
     workers: int = typer.Option(1, "--workers", "-w", help="Number of worker processes"),
 ) -> None:

@@ -79,9 +79,7 @@ class HTMXSSEExtension(HTMXExtension):
     }
 
     def __init__(self, version="2.2.2"):
-        self.script = PartialScript(
-            src=f"https://unpkg.com/htmx-ext-sse@{version}/sse.js"
-        )
+        self.script = PartialScript(src=f"https://unpkg.com/htmx-ext-sse@{version}/sse.js")
 
 
 class HTMXWebSocketExtension(HTMXExtension):
@@ -113,9 +111,7 @@ class HTMXMultiSwapExtension(HTMXExtension):
 
 class HTMXLoadingStatesExtension(HTMXExtension):
     name = "loading_states"
-    link = (
-        "https://github.com/bigskysoftware/htmx-extensions/tree/main/src/loading-states"
-    )
+    link = "https://github.com/bigskysoftware/htmx-extensions/tree/main/src/loading-states"
     mapping = {}
 
     def __init__(self, version="2.0.0"):
@@ -135,7 +131,9 @@ class HTMXClassToolsExtension(HTMXExtension):
     }
 
     def __init__(self, version="2.0.1"):
-        self.script = PartialScript(src=f"https://unpkg.com/htmx-ext-class-tools@{version}/class-tools.js")
+        self.script = PartialScript(
+            src=f"https://unpkg.com/htmx-ext-class-tools@{version}/class-tools.js"
+        )
 
 
 class HTMXDownloadExtension(HTMXExtension):
@@ -321,12 +319,8 @@ def wrap_non_htmx(non_htmx_wrapper: t.Callable[[_RIn], _ROut], post_process=None
             )
         )
 
-        without_default_params = {
-            p: None for p in params if p.default == inspect.Parameter.empty
-        }
-        with_default_params = {
-            p: p.default for p in params if p.default != inspect.Parameter.empty
-        }
+        without_default_params = {p: None for p in params if p.default == inspect.Parameter.empty}
+        with_default_params = {p: p.default for p in params if p.default != inspect.Parameter.empty}
         params = {**without_default_params, **with_default_params}
 
         wrapper.__signature__ = inspect.Signature(

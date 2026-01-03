@@ -105,6 +105,10 @@ dev = [
     "mypy>=1.13.0",
 ]
 
+youtube = [
+    "yt-dlp>=2024.10.0",
+]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100

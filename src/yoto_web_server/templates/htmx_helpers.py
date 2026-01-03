@@ -14,12 +14,12 @@ from pydom import html as d
 
 class ClipboardCopyScript(Component):
     """Minimal script for copying text to clipboard."""
-    
+
     def __init__(self, *, source_id: str, success_message: str = "Copied!"):
         super().__init__()
         self.source_id = source_id
         self.success_message = success_message
-    
+
     def render(self):
         return d.Script()(f"""
             function copyToClipboard_{self.source_id}() {{
@@ -35,7 +35,7 @@ class ClipboardCopyScript(Component):
 
 class FilePickerScript(Component):
     """Minimal script for triggering file/folder picker."""
-    
+
     def render(self):
         return d.Script()("""
             function triggerFilePicker(inputId) {
@@ -88,13 +88,13 @@ class FilePickerScript(Component):
 
 class SortableInitScript(Component):
     """Initialize Sortable.js for drag-and-drop reordering."""
-    
+
     def __init__(self, *, list_id: str, save_endpoint: str, handle_class: str = "drag-handle"):
         super().__init__()
         self.list_id = list_id
         self.save_endpoint = save_endpoint
         self.handle_class = handle_class
-    
+
     def render(self):
         return d.Script()(f"""
             document.addEventListener('DOMContentLoaded', function() {{
@@ -125,14 +125,14 @@ class SortableInitScript(Component):
 
 class ToastNotificationSystem(Component):
     """Simple toast notification system using HTMX events."""
-    
+
     def render(self):
         return d.Fragment()(
             # Toast container
             d.Div(
                 id="toast-container",
                 classes="fixed top-4 right-4 z-[100] flex flex-col gap-2",
-                **{"hx-on:show-toast": "showToast(event)"}
+                **{"hx-on:show-toast": "showToast(event)"},
             )(),
             # Toast logic
             d.Script()("""
@@ -153,13 +153,13 @@ class ToastNotificationSystem(Component):
                         setTimeout(() => toast.remove(), 300);
                     }, 4000);
                 }
-            """)
+            """),
         )
 
 
 class ToggleClassScript(Component):
     """Simple script for toggling CSS classes - used where HTMX swap is overkill."""
-    
+
     def render(self):
         return d.Script()("""//js
             function toggleClass(elementId, className) {

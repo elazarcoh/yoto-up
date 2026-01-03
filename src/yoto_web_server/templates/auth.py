@@ -10,10 +10,10 @@ from pydom import html as d
 
 class AuthPage(Component):
     """Authentication page content."""
-    
+
     def __init__(self, *, is_authenticated: bool = False):
         self.is_authenticated = is_authenticated
-    
+
     def render(self):
         if self.is_authenticated:
             return AuthenticatedView()
@@ -22,7 +22,7 @@ class AuthPage(Component):
 
 class LoginView(Component):
     """Login view for unauthenticated users."""
-    
+
     def render(self):
         return d.Div(classes="max-w-md mx-auto bg-white shadow rounded-lg p-8 mt-10")(
             d.H1(classes="text-2xl font-bold text-gray-900 mb-4 text-center")("Sign In to Yoto"),
@@ -40,8 +40,13 @@ class LoginView(Component):
                 )("Start Authentication"),
             ),
             d.Div(id="auth-content", classes="mt-6"),
-            d.Div(id="auth-loading", classes="htmx-indicator flex items-center justify-center space-x-2 mt-4 text-gray-500")(
-                d.Div(classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"),
+            d.Div(
+                id="auth-loading",
+                classes="htmx-indicator flex items-center justify-center space-x-2 mt-4 text-gray-500",
+            )(
+                d.Div(
+                    classes="animate-spin h-5 w-5 border-2 border-indigo-500 rounded-full border-t-transparent"
+                ),
                 d.Span()("Redirecting to Yoto login..."),
             ),
         )
@@ -49,18 +54,20 @@ class LoginView(Component):
 
 class AuthenticatedView(Component):
     """View for authenticated users."""
-    
+
     def render(self):
         return d.Div(classes="max-w-md mx-auto bg-white shadow rounded-lg p-8 mt-10 text-center")(
-            d.Div(classes="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4")(
-                d.Span()("✓")
-            ),
+            d.Div(
+                classes="h-16 w-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-4"
+            )(d.Span()("✓")),
             d.H1(classes="text-2xl font-bold text-gray-900 mb-2")("You're Signed In!"),
-            d.P(classes="text-gray-600 mb-6")("You have successfully authenticated with your Yoto account."),
+            d.P(classes="text-gray-600 mb-6")(
+                "You have successfully authenticated with your Yoto account."
+            ),
             d.Div(classes="flex flex-col space-y-3")(
                 d.A(
                     href="/playlists/",
-                    classes="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+                    classes="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700",
                 )("Go to Playlists"),
                 d.Button(
                     type="button",
@@ -74,7 +81,7 @@ class AuthenticatedView(Component):
 
 class AuthStatusPartial(Component):
     """Partial for authentication status updates."""
-    
+
     def __init__(
         self,
         *,
@@ -85,23 +92,19 @@ class AuthStatusPartial(Component):
         self.is_authenticated = is_authenticated
         self.message = message
         self.error = error
-    
+
     def render(self):
         if self.error:
             return d.Div(classes="rounded-md bg-red-50 p-4")(
                 d.Div(classes="flex")(
-                    d.Div(classes="flex-shrink-0")(
-                        d.Span(classes="text-red-400")("⚠️")
-                    ),
+                    d.Div(classes="flex-shrink-0")(d.Span(classes="text-red-400")("⚠️")),
                     d.Div(classes="ml-3")(
                         d.H3(classes="text-sm font-medium text-red-800")("Authentication Error"),
-                        d.Div(classes="mt-2 text-sm text-red-700")(
-                            d.P()(self.error)
-                        ),
+                        d.Div(classes="mt-2 text-sm text-red-700")(d.P()(self.error)),
                     ),
                 )
             )
-        
+
         if self.is_authenticated:
             # Trigger a redirect or update the page
             return d.Div(
@@ -110,18 +113,18 @@ class AuthStatusPartial(Component):
                 hx_target="body",
                 hx_push_url="true",
             )
-        
+
         return d.Div()
 
 
 class DeviceCodeInstructions(Component):
     """Instructions for device code flow."""
-    
+
     def __init__(self, *, user_code: str, verification_uri: str, interval: int = 5):
         self.user_code = user_code
         self.verification_uri = verification_uri
         self.interval = interval
-    
+
     def render(self):
         return d.Div(
             classes="bg-gray-50 p-6 rounded-lg border border-gray-200",
@@ -140,7 +143,6 @@ class DeviceCodeInstructions(Component):
                 }}
             }})();
             """),
-            
             d.H3(classes="text-lg font-medium text-gray-900 mb-4")("Follow these steps:"),
             d.Ol(classes="list-decimal list-inside space-y-4 text-gray-600")(
                 d.Li()(
@@ -149,12 +151,12 @@ class DeviceCodeInstructions(Component):
                         d.Div(
                             classes="text-3xl font-mono font-bold tracking-widest bg-white border border-gray-300 px-4 py-2 rounded text-center flex-1 select-all cursor-pointer",
                             id="user-code",
-                            title="Click to select"
+                            title="Click to select",
                         )(self.user_code),
                         d.Button(
                             type="button",
                             classes="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium text-sm transition-colors",
-                            onclick="copyUserCode()"
+                            onclick="copyUserCode()",
                         )("Copy"),
                     ),
                 ),
@@ -165,7 +167,7 @@ class DeviceCodeInstructions(Component):
                         href=self.verification_uri,
                         target="_blank",
                         id="device-code-link",
-                        classes="text-indigo-600 hover:text-indigo-700 font-medium underline break-all inline-block mt-2"
+                        classes="text-indigo-600 hover:text-indigo-700 font-medium underline break-all inline-block mt-2",
                     )(self.verification_uri),
                 ),
                 d.Li()("Paste the code and sign in."),
@@ -215,14 +217,13 @@ class DeviceCodeInstructions(Component):
                 }, 2000);
             }
             """),
-            
             # Polling div
             d.Div(
                 hx_post="/auth/poll",
                 hx_trigger=f"every {self.interval}s",
                 hx_target="#auth-content",
                 hx_swap="innerHTML",
-                classes="mt-6 text-center text-sm text-gray-500"
+                classes="mt-6 text-center text-sm text-gray-500",
             )(
                 d.Div(classes="flex items-center justify-center space-x-2")(
                     d.Div(classes="animate-pulse h-2 w-2 bg-indigo-400 rounded-full"),

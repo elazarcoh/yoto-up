@@ -289,6 +289,37 @@ class UploadSessionService:
 
         return False
 
+    def update_file_filename(
+        self,
+        session_id: str,
+        file_id: str,
+        new_filename: str,
+    ) -> bool:
+        """
+        Update the filename for a file in a session.
+
+        Args:
+            session_id: ID of the upload session
+            file_id: ID of the file
+            new_filename: New filename
+
+        Returns:
+            True if updated, False if not found
+        """
+        if session_id not in self._sessions:
+            return False
+
+        session = self._sessions[session_id]
+
+        for file_status in session.files:
+            if file_status.file_id == file_id:
+                old_filename = file_status.filename
+                file_status.filename = new_filename
+                logger.info(f"Updated filename for {file_id}: {old_filename} -> {new_filename}")
+                return True
+
+        return False
+
     def get_session(self, session_id: str) -> UploadSession | None:
         """
         Get a session by ID.

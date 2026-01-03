@@ -2,7 +2,6 @@
 FastAPI dependencies for request-scoped services.
 """
 
-from pathlib import Path
 from typing import Annotated, Any, TypeVar, overload
 
 from dependency_injector import providers, wiring
@@ -11,6 +10,7 @@ from loguru import logger
 
 from yoto_web_server.api.client import YotoApiClient
 from yoto_web_server.container import Container
+from yoto_web_server.features.youtube.service import YouTubeFeature
 from yoto_web_server.middleware.session_middleware import (
     SESSION_COOKIE_SECURE,
     get_cookie_payload_from_request,
@@ -18,13 +18,17 @@ from yoto_web_server.middleware.session_middleware import (
     get_session_id_from_request,
     set_session_cookie,
 )
+from yoto_web_server.services.audio_processor import AudioProcessorService
 from yoto_web_server.services.icon_service import IconService
 from yoto_web_server.services.mqtt_service import MqttService
-from yoto_web_server.services.audio_processor import AudioProcessorService
+from yoto_web_server.services.optional_features_service import (
+    OptionalFeaturesService,
+)
 from yoto_web_server.services.session_aware_api_service import SessionAwareApiService
 from yoto_web_server.services.session_service import SessionService
-from yoto_web_server.services.upload_session_service import UploadSessionService
 from yoto_web_server.services.upload_processing_service import UploadProcessingService
+from yoto_web_server.services.upload_session_service import UploadSessionService
+from yoto_web_server.services.upload_orchestrator_service import UploadOrchestrator
 
 
 class AuthenticationError(Exception):
@@ -68,6 +72,9 @@ UploadSessionServiceDep = Annotated[
 ]
 UploadProcessingServiceDep = Annotated[
     UploadProcessingService, ContainerDepends(Container.upload_processing_service)
+]
+UploadOrchestratorDep = Annotated[
+    UploadOrchestrator, ContainerDepends(Container.upload_orchestrator)
 ]
 MqttServiceDep = Annotated[MqttService, ContainerDepends(Container.mqtt_service)]
 AudioProcessorServiceDep = Annotated[
@@ -174,3 +181,12 @@ async def get_yoto_client(session_api: AuthenticatedSessionApiDep) -> YotoApiCli
 
 
 YotoApiDep = Annotated[YotoApiClient, Depends(get_yoto_client)]
+
+
+# Optional Features dependency
+OptionalFeaturesDep = Annotated[
+    OptionalFeaturesService, ContainerDepends(Container.optional_features_service)
+]
+
+# YouTube Feature dependency
+YouTubeFeatureDep = Annotated[YouTubeFeature, ContainerDepends(Container.youtube_feature)]

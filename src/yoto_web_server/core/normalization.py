@@ -70,9 +70,7 @@ class AudioNormalizer:
             fname = os.path.basename(p)
             output_paths.append(os.path.join(output_dir, fname))
 
-        logger.info(
-            f"Normalizing {len(input_paths)} files. Batch mode: {self.batch_mode}"
-        )
+        logger.info(f"Normalizing {len(input_paths)} files. Batch mode: {self.batch_mode}")
 
         if not self.batch_mode:
             # Process individually to handle different codecs/extensions correctly
@@ -82,9 +80,7 @@ class AudioNormalizer:
                 codec = self._get_codec_for_ext(ext)
 
                 if progress_callback:
-                    progress_callback(
-                        f"Normalizing {os.path.basename(inp)}...", (i / total)
-                    )
+                    progress_callback(f"Normalizing {os.path.basename(inp)}...", (i / total))
 
                 normalizer = FFmpegNormalize(
                     target_level=self.target_level,

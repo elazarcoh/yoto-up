@@ -155,6 +155,7 @@ class Navigation(Component):
                     ("Playlists", "/playlists/"),
                     ("Devices", "/devices/"),
                     ("Icons", "/icons/"),
+                    ("Features", "/features/"),
                     # ("Upload", "/upload/"),
                     # ("Cards", "/cards/"),
                 ]

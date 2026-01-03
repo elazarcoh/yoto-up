@@ -18,9 +18,7 @@ class IconGrid(Component):
 
     def render(self) -> Element:
         if not self.icons:
-            return d.Div(classes="text-center py-8 text-gray-500")(
-                "No icons found"
-            )
+            return d.Div(classes="text-center py-8 text-gray-500")("No icons found")
 
         return d.Div()(
             d.H2(classes="text-xl font-semibold text-gray-800 mb-4")(self.title),

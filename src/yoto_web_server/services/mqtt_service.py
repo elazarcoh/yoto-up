@@ -5,7 +5,7 @@ This service handles the connection to the Yoto MQTT broker for sending
 device commands and receiving real-time status updates from players.
 
 Note: This is a placeholder implementation. The actual MQTT connection logic
-requires obtaining MQTT credentials from the Yoto API, which is currently 
+requires obtaining MQTT credentials from the Yoto API, which is currently
 handled by the closed-source `yoto_api` library in Home Assistant.
 
 MQTT Topics:
@@ -63,7 +63,7 @@ class MqttService:
     async def _publish_command(self, device_id: str, command: str, payload: Dict[str, Any]):
         """
         Publish a command to a device via MQTT.
-        
+
         Args:
             device_id: Device ID
             command: Command name (play, pause, volume, etc.)
@@ -71,13 +71,13 @@ class MqttService:
         """
         if not self._running or not self.client:
             raise RuntimeError("MQTT service not connected")
-        
+
         topic = f"yoto/devices/{device_id}/commands"
         message = {
             "command": command,
             "payload": payload,
         }
-        
+
         try:
             await self.client.publish(topic, json.dumps(message))
             logger.debug(f"Published {command} to {device_id}: {payload}")
@@ -166,9 +166,9 @@ class MqttService:
         """Handle incoming MQTT state messages."""
         topic = str(message.topic)
         payload = message.payload
-        
+
         logger.debug(f"Received MQTT message on {topic}")
-        
+
         if topic in self._callbacks:
             try:
                 if isinstance(payload, (bytes, bytearray)):

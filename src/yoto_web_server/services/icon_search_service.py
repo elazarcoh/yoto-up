@@ -66,7 +66,9 @@ class IconSearchService:
                     except Exception as e:
                         # If DisplayIcon validation fails, skip this file
                         # (likely old YotoIconsSearchResult format that's no longer compatible)
-                        logger.debug(f"Skipping incompatible cache file {icon_file.name}: {type(e).__name__}")
+                        logger.debug(
+                            f"Skipping incompatible cache file {icon_file.name}: {type(e).__name__}"
+                        )
             except Exception as e:
                 logger.debug(f"Failed to read yotoicon cache file {icon_file}: {e}")
 
