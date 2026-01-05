@@ -813,17 +813,21 @@ class UploadSessionsListPartial(Component):
                     d.Span(classes="font-medium text-gray-900")(
                         f"Session {session.session_id[:8]}"
                     ),
-                    d.Span(classes="text-sm text-gray-600")(f"{completed_files}/{total_files}"),
+                    d.Span(classes="text-sm text-gray-600")(
+                        f"{completed_files}/{total_files} files"
+                    ),
                 ),
-                d.Div(classes="w-full bg-gray-200 rounded-full h-2")(
+                # Session-level progress bar
+                d.Div(classes="w-full bg-gray-200 rounded-full h-2 overflow-hidden")(
                     d.Div(
                         classes="bg-blue-600 h-2 rounded-full transition-all",
                         style=f"width: {progress}%",
                     )()
                 ),
+                d.Div(classes="mt-1 text-xs text-gray-500")(f"Overall: {progress}%"),
             ),
-            d.Div(classes="space-y-1 text-sm mb-3")(
-                *[self._render_file(f) for f in (session.files or [])]
+            d.Div(classes="space-y-2 text-sm mb-3")(
+                *[self._render_file_with_progress(f) for f in (session.files or [])]
             ),
             d.Div(classes="flex justify-end")(
                 # Dismiss
@@ -860,23 +864,44 @@ class UploadSessionsListPartial(Component):
             ),
         )
 
-    def _render_file(self, file: UploadFileStatus):
-        """Render a single file status."""
+    def _render_file_with_progress(self, file: UploadFileStatus):
+        """Render a single file with detailed progress tracking."""
         status_icons = {
             FileUploadStatus.DONE: ("✅", "text-green-600"),
             FileUploadStatus.YOTO_UPLOADING: ("⬆️", "text-blue-600"),
             FileUploadStatus.PROCESSING: ("🔄", "text-yellow-600"),
             FileUploadStatus.QUEUED: ("📋", "text-gray-600"),
             FileUploadStatus.UPLOADING: ("⬆️", "text-blue-600"),
+            FileUploadStatus.UPLOADING_LOCAL: ("📤", "text-blue-500"),
+            FileUploadStatus.DOWNLOADING_YOUTUBE: ("📥", "text-purple-600"),
             FileUploadStatus.PENDING: ("⏳", "text-gray-500"),
         }
 
         icon, color = status_icons.get(file.status, ("⏳", "text-gray-500"))
-        status_label = file.status.replace("_", " ")
+        status_label = file.status.replace("_", " ").title()
+        step_label = file.current_step.replace("_", " ").title() if file.current_step else "Pending"
 
-        return d.Div(classes="flex items-center justify-between py-2")(
-            d.Span(classes="text-sm text-gray-800")(f"📄 {file.filename}"),
-            d.Span(**{"class": f"{color} text-sm font-medium"})(f"{icon} {status_label}"),
+        return d.Div(classes="border border-gray-200 rounded p-2 bg-gray-50")(
+            d.Div(classes="flex items-center justify-between mb-1")(
+                d.Div(classes="flex-1")(
+                    d.Span(classes="text-xs font-medium text-gray-800")(f"📄 {file.filename}"),
+                ),
+                d.Span(**{"class": f"{color} text-xs font-medium"})(f"{icon} {status_label}"),
+            ),
+            # Progress bar with step indicator
+            d.Div(classes="mb-1")(
+                d.Div(classes="w-full bg-gray-300 rounded-full h-1.5 overflow-hidden")(
+                    d.Div(
+                        classes="bg-gradient-to-r from-blue-400 to-blue-600 h-1.5 rounded-full transition-all",
+                        style=f"width: {file.progress}%",
+                    )()
+                ),
+            ),
+            # Progress percentage and step
+            d.Div(classes="flex justify-between items-center text-xs text-gray-600")(
+                d.Span()(f"{int(file.progress)}%"),
+                d.Span()(f"🔹 {step_label}"),
+            ),
         )
 
 

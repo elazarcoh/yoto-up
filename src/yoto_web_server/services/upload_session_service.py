@@ -120,38 +120,6 @@ class UploadSessionService:
         logger.info(f"Registered file {filename} ({size_bytes} bytes) in session {session_id}")
         return file_status
 
-    def update_file_progress(
-        self,
-        session_id: str,
-        file_id: str,
-        progress: float,
-        status: FileUploadStatus,
-    ) -> bool:
-        """
-        Update progress of a file upload.
-
-        Args:
-            session_id: ID of the upload session
-            file_id: ID of the file
-            progress: Progress percentage (0-100)
-            status: Current status of the file
-
-        Returns:
-            True if updated, False if not found
-        """
-        if session_id not in self._sessions:
-            return False
-
-        session = self._sessions[session_id]
-
-        for file_status in session.files:
-            if file_status.file_id == file_id:
-                file_status.progress = min(100.0, max(0.0, progress))
-                file_status.status = status
-                return True
-
-        return False
-
     def mark_file_uploaded(
         self,
         session_id: str,
@@ -211,6 +179,8 @@ class UploadSessionService:
             if file_status.file_id == file_id:
                 file_status.status = FileUploadStatus.PROCESSING
                 file_status.current_step = processing_step
+                # Update progress based on stage
+                self.update_file_progress(session_id, file_id, processing_step, 0)
                 return True
 
         return False
@@ -228,6 +198,7 @@ class UploadSessionService:
         for file_status in session.files:
             if file_status.file_id == file_id:
                 file_status.status = FileUploadStatus.YOTO_UPLOADING
+                self.update_file_progress(session_id, file_id, "yoto_uploading", 0)
                 return True
 
         return False
@@ -256,6 +227,7 @@ class UploadSessionService:
             if file_status.file_id == file_id:
                 file_status.status = FileUploadStatus.DONE
                 file_status.progress = 100.0
+                file_status.current_step = "done"
                 logger.info(f"File {file_id} processing complete")
                 return True
 
@@ -403,3 +375,64 @@ class UploadSessionService:
         session = self.get_session(session_id)
         if session:
             session.session_done = True
+
+    def update_file_progress(
+        self, session_id: str, file_id: str, step: str, step_progress: float = 100.0
+    ) -> bool:
+        """
+        Update file progress based on processing stage.
+
+        Processing stages and their progress ranges:
+        - Pending/Queued: 0%
+        - Uploading (local): 25%
+        - Normalizing: 50%
+        - Processing: 75%
+        - Yoto Uploading: 90%
+        - Done: 100%
+
+        Args:
+            session_id: ID of the upload session
+            file_id: ID of the file
+            step: Current processing step
+            step_progress: Progress within the current step (0-100)
+
+        Returns:
+            True if updated, False if not found
+        """
+        if session_id not in self._sessions:
+            return False
+
+        session = self._sessions[session_id]
+        for file_status in session.files:
+            if file_status.file_id == file_id:
+                # Define stage weights (percentage of total completion)
+                stage_progress = {
+                    "pending": 0,
+                    "queued": 5,
+                    "uploading_local": 25,  # Local upload to server
+                    "normalizing": 50,  # Audio normalization
+                    "processing": 75,  # Analysis and track creation
+                    "yoto_uploading": 90,  # Uploading to Yoto API
+                    "done": 100,
+                }
+
+                base_progress = stage_progress.get(step, 0)
+                # Calculate progress as base + partial progress within stage (up to next stage)
+                next_stage_progress = stage_progress.get(step, 100)
+                stage_range = 10  # Default range between stages
+
+                # Find the next stage progress for better calculation
+                sorted_stages = sorted(stage_progress.values())
+                try:
+                    current_idx = sorted_stages.index(base_progress)
+                    if current_idx + 1 < len(sorted_stages):
+                        next_stage_progress = sorted_stages[current_idx + 1]
+                except (ValueError, IndexError):
+                    pass
+
+                stage_range = next_stage_progress - base_progress
+                file_status.progress = base_progress + (stage_range * step_progress / 100.0)
+                file_status.current_step = step
+                return True
+
+        return False

@@ -170,8 +170,8 @@ class UploadOrchestrator:
             self._upload_session_service.update_file_progress(
                 session_id=session_id,
                 file_id=file_status.file_id,
-                progress=0.0,
-                status=FileUploadStatus.UPLOADING_LOCAL,
+                step="uploading_local",
+                step_progress=0,
             )
 
             logger.info(
@@ -242,8 +242,8 @@ class UploadOrchestrator:
             self._upload_session_service.update_file_progress(
                 session_id=session_id,
                 file_id=file_status.file_id,
-                progress=0.0,
-                status=FileUploadStatus.DOWNLOADING_YOUTUBE,
+                step="downloading_youtube",
+                step_progress=0,
             )
 
             logger.info(
