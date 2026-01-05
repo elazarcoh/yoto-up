@@ -310,72 +310,103 @@ class UploadModalPartial(Component):
                     const sessionData = await sessionRes.json();
                     const sessionId = sessionData.session_id;
 
-                    // Step 2: Register YouTube URLs if any
-                    if (urls.length > 0) {{
-                        const urlsRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/youtube-urls`, {{
-                            method: 'POST',
-                            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
-                            body: new URLSearchParams({{ youtube_urls: JSON.stringify(urls) }}).toString()
-                        }});
-
-                        if (!urlsRes.ok) {{
-                            console.error(`Failed to register YouTube URLs: ${{urlsRes.statusText}}`);
-                        }}
-                    }}
-
-                    const totalItems = files.length + urls.length;
-
-                    // Step 3: Pre-register file count if any
-                    if (files.length > 0) {{
-                        const registerRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/register-files`, {{
-                            method: 'POST',
-                            headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
-                            body: new URLSearchParams({{ file_count: files.length }}).toString()
-                        }});
-
-                        if (!registerRes.ok) {{
-                            throw new Error(`Failed to register files: ${{registerRes.statusText}}`);
-                        }}
-                    }}
-
-                    // Step 4: Upload each file to the session
-                    let uploadedCount = 0;
+                    // Step 2: Register all files (phase 1) - returns immediately
+                    const fileRegistrations = [];
                     for (const {{ file }} of files) {{
                         const formData = new FormData();
-                        formData.append('file', file);
+                        formData.append('filename', file.name);
+                        formData.append('size_bytes', file.size);
 
-                        const uploadRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/files`, {{
-                            method: 'POST',
-                            body: formData
-                        }});
+                        const registerRes = await fetch(
+                            `/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/register-file`,
+                            {{
+                                method: 'POST',
+                                body: formData
+                            }}
+                        );
 
-                        if (!uploadRes.ok) {{
-                            console.error(`Failed to upload ${{file.name}}: ${{uploadRes.statusText}}`);
+                        if (registerRes.ok) {{
+                            const regData = await registerRes.json();
+                            fileRegistrations.push({{ file, fileId: regData.file_id }});
                         }} else {{
-                            uploadedCount++;
-                            const progress = totalItems > 0 ? (uploadedCount / totalItems) * 100 : 100;
-                            // Show progress to user
-                            console.log(`Upload progress: ${{progress.toFixed(0)}}%`);
+                            console.error(`Failed to register ${{file.name}}: ${{registerRes.statusText}}`);
                         }}
                     }}
 
-                    // Step 5: Finalize the session - all files/URLs registered, ready to process
-                    const finalizeRes = await fetch(`/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/finalize`, {{
-                        method: 'POST'
-                    }});
+                    // Step 3: Register all URLs (phase 1) - returns immediately
+                    const urlRegistrations = [];
+                    for (const url of urls) {{
+                        const formData = new FormData();
+                        formData.append('youtube_url', url);
 
-                    if (!finalizeRes.ok) {{
-                        throw new Error(`Failed to finalize upload: ${{finalizeRes.statusText}}`);
+                        const registerRes = await fetch(
+                            `/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/register-url`,
+                            {{
+                                method: 'POST',
+                                body: formData
+                            }}
+                        );
+
+                        if (registerRes.ok) {{
+                            const regData = await registerRes.json();
+                            urlRegistrations.push({{ url, fileId: regData.file_id }});
+                        }} else {{
+                            console.error(`Failed to register URL ${{url}}: ${{registerRes.statusText}}`);
+                        }}
                     }}
 
-                    // Success - close modal and reload playlist
-                    setTimeout(() => {{
-                        document.getElementById('upload-modal')?.remove();
-                        htmx.ajax('GET', `/playlists/${{currentPlaylistId}}`, {{ target: 'body', swap: 'outerHTML' }});
-                    }}, 1000);
+                    // Close modal immediately and redirect to playlist
+                    document.getElementById('upload-modal')?.remove();
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    htmx.ajax('GET', `/playlists/${{currentPlaylistId}}`, {{ target: 'body', swap: 'outerHTML' }});
+
+                    // Step 4: Upload files in background (phase 2) - non-blocking
+                    for (const {{ file, fileId }} of fileRegistrations) {{
+                        const uploadFormData = new FormData();
+                        uploadFormData.append('file', file);
+
+                        fetch(
+                            `/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/upload-file/${{fileId}}`,
+                            {{
+                                method: 'POST',
+                                body: uploadFormData
+                            }}
+                        )
+                        .then(res => {{
+                            if (!res.ok) {{
+                                console.error(`Failed to upload ${{file.name}}: ${{res.statusText}}`);
+                            }} else {{
+                                console.log(`File ${{file.name}} uploaded successfully`);
+                            }}
+                        }})
+                        .catch(err => console.error(`Upload error for ${{file.name}}:`, err));
+                    }}
+
+                    // Step 5: Start downloading URLs in background (phase 2) - non-blocking
+                    for (const {{ url, fileId }} of urlRegistrations) {{
+                        const downloadFormData = new FormData();
+                        downloadFormData.append('youtube_url', url);
+
+                        fetch(
+                            `/playlists/${{currentPlaylistId}}/upload-session/${{sessionId}}/download-url/${{fileId}}`,
+                            {{
+                                method: 'POST',
+                                body: downloadFormData
+                            }}
+                        )
+                        .then(res => {{
+                            if (!res.ok) {{
+                                console.error(`Failed to download URL ${{url}}: ${{res.statusText}}`);
+                            }} else {{
+                                console.log(`URL ${{url}} download started`);
+                            }}
+                        }})
+                        .catch(err => console.error(`Download error for ${{url}}:`, err));
+                    }}
+
                 }} catch (err) {{
-                    console.error('Upload error:', err);
-                    alert('Upload failed: ' + err.message);
+                    console.error('Upload initialization error:', err);
+                    alert('Upload initialization failed: ' + err.message);
                     uploadBtn.disabled = false;
                 }}
             }});

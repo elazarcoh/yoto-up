@@ -681,10 +681,82 @@ async def create_upload_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/{playlist_id}/upload-session/{session_id}/files", response_class=JSONResponse)
-async def upload_file_to_session(
+
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/register-file", response_class=JSONResponse
+)
+async def register_file_only(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
+    request: Request,
+    upload_session_service: UploadSessionServiceDep,
+    upload_orchestrator: UploadOrchestratorDep,
+    yoto_client: YotoApiDep,
+    filename: Annotated[str, Form(description="Name of the file")],
+    size_bytes: Annotated[int, Form(description="Size of the file in bytes")],
+) -> FileUploadResponse:
+    """
+    Register a file without uploading it yet.
+
+    This is the first step in the two-phase upload. The client pre-registers
+    the file metadata, and the server returns immediately. The client then
+    uploads the actual file content separately.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        filename: Name of the file
+        size_bytes: Size of the file in bytes
+
+    Returns:
+        JSON with file_id and initial file_status (UPLOADING_LOCAL)
+    """
+    try:
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Register file only (no processing yet)
+        file_status = upload_orchestrator.register_file_only(
+            session_id=session_id,
+            filename=filename,
+            size_bytes=size_bytes,
+        )
+
+        if not file_status:
+            raise HTTPException(status_code=500, detail="Failed to register file")
+
+        logger.info(f"File {filename} registered (not uploaded) in session {session_id}")
+
+        # Get updated session
+        updated_session = upload_session_service.get_session(session_id)
+
+        return FileUploadResponse(
+            status="file_registered",
+            file_id=file_status.file_id,
+            filename=filename,
+            session_id=session_id,
+            session=updated_session,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to register file in session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/upload-file/{file_id}", response_class=JSONResponse
+)
+async def upload_file_content(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    file_id: Annotated[str, Path()],
     request: Request,
     file: UploadFile = File(...),
     *,
@@ -693,18 +765,19 @@ async def upload_file_to_session(
     yoto_client: YotoApiDep,
 ) -> FileUploadResponse:
     """
-    Upload a single file to an upload session using unified orchestrator.
+    Upload the content of a previously registered file.
 
-    Files are registered with the orchestrator which handles saving and queuing
-    for processing through the unified pipeline.
+    This is the second step in the two-phase upload. The file must have been
+    pre-registered using the register-file endpoint.
 
     Args:
         playlist_id: ID of the playlist
         session_id: ID of the upload session
-        file: The audio file to upload
+        file_id: ID of the file (from registration)
+        file: The audio file content to upload
 
     Returns:
-        JSON with file_id, session status, and progress
+        JSON with file_id and updated file_status
     """
     try:
         # Verify session exists
@@ -715,31 +788,44 @@ async def upload_file_to_session(
         if session.playlist_id != playlist_id:
             raise HTTPException(status_code=403, detail="Session playlist mismatch")
 
+        # Find the file in the session
+        file_status = None
+        for f in session.files:
+            if f.file_id == file_id:
+                file_status = f
+                break
+
+        if not file_status:
+            raise HTTPException(status_code=404, detail="File not found in session")
+
         if file.filename is None:
-            raise HTTPException(status_code=400, detail="No file uploaded")
+            raise HTTPException(status_code=400, detail="No file content provided")
 
         # Read file content
         content = await file.read()
 
-        # Register and process file through orchestrator
-        file_status = await upload_orchestrator.register_and_process_file(
+        # Process the file in background (save and queue for processing)
+        success = await upload_orchestrator.update_and_process_file(
             session_id=session_id,
             playlist_id=playlist_id,
+            file_id=file_id,
             filename=file.filename,
             file_content=content,
         )
 
-        if not file_status:
-            raise HTTPException(status_code=500, detail="Failed to register file")
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to process file")
 
         # Get updated session
         updated_session = upload_session_service.get_session(session_id)
 
-        logger.info(f"File {file.filename} registered through orchestrator in session {session_id}")
+        logger.info(
+            f"File {file.filename} uploaded and queued for processing in session {session_id}"
+        )
 
         return FileUploadResponse(
             status="file_uploaded",
-            file_id=file_status.file_id,
+            file_id=file_id,
             filename=file.filename,
             session_id=session_id,
             session=updated_session,
@@ -748,8 +834,7 @@ async def upload_file_to_session(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to upload file to session {session_id}: {e}")
-        # Clean up uploaded file on error
+        logger.error(f"Failed to upload file content to session {session_id}: {e}")
         if file:
             try:
                 await file.close()
@@ -758,87 +843,30 @@ async def upload_file_to_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/{playlist_id}/upload-session/{session_id}/register-files", response_class=JSONResponse
-)
-async def register_files_for_session(
-    playlist_id: Annotated[str, Path()],
-    session_id: Annotated[str, Path()],
-    request: Request,
-    container: ContainerDep,
-    yoto_client: YotoApiDep,
-    file_count: Annotated[int, Form(description="Number of files that will be uploaded")],
-) -> dict[str, Any]:
-    """
-    Pre-register files for an upload session.
-
-    This should be called BEFORE uploading files to tell the server how many files
-    will be uploaded. This allows proper handling of batch normalization which needs
-    to wait for all files before processing.
-
-    Args:
-        playlist_id: ID of the playlist
-        session_id: ID of the upload session
-        file_count: Number of files that will be uploaded
-
-    Returns:
-        JSON confirmation
-    """
-    try:
-        upload_session_service = container.upload_session_service()
-
-        # Verify session exists
-        session = upload_session_service.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Upload session not found")
-
-        if session.playlist_id != playlist_id:
-            raise HTTPException(status_code=403, detail="Session playlist mismatch")
-
-        # Store the expected file count in session
-        session.expected_file_count = file_count
-        session.files_registered = True
-
-        logger.info(f"Registered {file_count} files for session {session_id}")
-
-        return {
-            "status": "ok",
-            "message": f"Registered {file_count} files",
-            "session_id": session_id,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to register files for session {session_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{playlist_id}/upload-session/{session_id}/youtube-urls", response_class=JSONResponse)
-async def upload_urls_to_session(
+@router.post("/{playlist_id}/upload-session/{session_id}/register-url", response_class=JSONResponse)
+async def register_url_only(
     playlist_id: Annotated[str, Path()],
     session_id: Annotated[str, Path()],
     request: Request,
     upload_session_service: UploadSessionServiceDep,
     upload_orchestrator: UploadOrchestratorDep,
     yoto_client: YotoApiDep,
-    youtube_urls: Annotated[str, Form(description="JSON array of YouTube URLs to download")],
+    youtube_url: Annotated[str, Form(description="YouTube URL to register")],
 ) -> dict[str, Any]:
     """
-    Register YouTube URLs for download in an upload session using unified orchestrator.
+    Register a YouTube URL without starting download yet.
 
-    URLs are registered with the orchestrator which:
-    1. Routes to the YouTube service via "youtube:" scheme
-    2. Queues background download tasks
-    3. Automatically queues for processing once files are available
+    This is the first step in URL upload. The client pre-registers
+    the URL, and the server returns immediately. The client then
+    requests the download to start separately.
 
     Args:
         playlist_id: ID of the playlist
         session_id: ID of the upload session
-        youtube_urls: JSON array of YouTube URL strings
+        youtube_url: YouTube URL to register
 
     Returns:
-        JSON with registered URLs and updated session status
+        JSON with file_id and initial file_status (DOWNLOADING_YOUTUBE)
     """
     try:
         # Verify session exists
@@ -849,49 +877,26 @@ async def upload_urls_to_session(
         if session.playlist_id != playlist_id:
             raise HTTPException(status_code=403, detail="Session playlist mismatch")
 
-        # Parse the JSON array of URLs
-        import json
+        url_with_scheme = f"youtube:{youtube_url.strip()}"
 
-        try:
-            urls = json.loads(youtube_urls)
-            if not isinstance(urls, list):
-                urls = [youtube_urls]  # Handle single URL string
-        except json.JSONDecodeError:
-            urls = [youtube_urls]  # Fallback to single URL
+        # Register URL only (no download yet)
+        file_status = await upload_orchestrator.register_url_only(
+            session_id=session_id,
+            url_with_scheme=url_with_scheme,
+        )
 
-        if not urls:
-            raise HTTPException(status_code=400, detail="No YouTube URLs provided")
+        if not file_status:
+            raise HTTPException(status_code=500, detail="Failed to register URL")
 
-        # Register each URL through the orchestrator
-        registered_ids = []
-        for url in urls:
-            url = url.strip()
-            if not url:
-                continue
-
-            # Use scheme-based routing: "youtube:VIDEO_ID_OR_URL"
-            url_with_scheme = f"youtube:{url}"
-
-            file_status = await upload_orchestrator.register_and_process_url(
-                session_id=session_id,
-                playlist_id=playlist_id,
-                url_with_scheme=url_with_scheme,
-            )
-
-            if file_status:
-                registered_ids.append(file_status.file_id)
-                logger.info(
-                    f"Registered YouTube URL {url} as file {file_status.file_id} in session {session_id} "
-                    f"(scheme: {url_with_scheme})"
-                )
+        logger.info(f"URL {youtube_url} registered (not downloading) in session {session_id}")
 
         # Get updated session
         updated_session = upload_session_service.get_session(session_id)
 
         return {
             "status": "ok",
-            "message": f"Registered {len(registered_ids)} YouTube URLs for download",
-            "registered_ids": registered_ids,
+            "file_id": file_status.file_id,
+            "filename": file_status.filename,
             "session_id": session_id,
             "session": updated_session.model_dump() if updated_session else None,
         }
@@ -899,8 +904,96 @@ async def upload_urls_to_session(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to register YouTube URLs for session {session_id}: {e}")
+        logger.error(f"Failed to register URL in session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/download-url/{file_id}", response_class=JSONResponse
+)
+async def download_url_content(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    file_id: Annotated[str, Path()],
+    request: Request,
+    upload_session_service: UploadSessionServiceDep,
+    upload_orchestrator: UploadOrchestratorDep,
+    yoto_client: YotoApiDep,
+    youtube_url: Annotated[str, Form(description="YouTube URL to download")],
+) -> dict[str, Any]:
+    """
+    Start downloading content for a previously registered URL.
+
+    This is the second step in URL upload. The URL must have been
+    pre-registered using the register-url endpoint.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        file_id: ID of the file (from registration)
+        youtube_url: YouTube URL to download
+
+    Returns:
+        JSON with file_id and confirmation
+    """
+    try:
+        # Verify session exists
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Find the file in the session
+        file_status = None
+        for f in session.files:
+            if f.file_id == file_id:
+                file_status = f
+                break
+
+        if not file_status:
+            raise HTTPException(status_code=404, detail="File not found in session")
+
+        url_with_scheme = f"youtube:{youtube_url.strip()}"
+
+        # Start download in background
+        success = await upload_orchestrator.update_and_process_url(
+            session_id=session_id,
+            playlist_id=playlist_id,
+            file_id=file_id,
+            url_with_scheme=url_with_scheme,
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to start download")
+
+        logger.info(
+            f"URL {youtube_url} download started for file {file_id} in session {session_id}"
+        )
+
+        # Get updated session
+        updated_session = upload_session_service.get_session(session_id)
+
+        return {
+            "status": "ok",
+            "file_id": file_id,
+            "message": "Download started",
+            "session_id": session_id,
+            "session": updated_session.model_dump() if updated_session else None,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to start URL download in session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+
+
+
+
 
 
 @router.post("/{playlist_id}/upload-session/{session_id}/finalize", response_class=JSONResponse)
@@ -1250,7 +1343,7 @@ async def update_playlist_cover(
 ) -> str:
     """
     Update playlist cover image.
-    
+
     Supports two methods:
     1. File upload: provide 'cover' file field
     2. URL: provide 'cover_url' form field - the URL will be downloaded and uploaded as a file
@@ -1258,7 +1351,9 @@ async def update_playlist_cover(
     try:
         # Validate that at least one input is provided
         if not cover and not cover_url:
-            raise HTTPException(status_code=400, detail="Either cover file or cover_url must be provided")
+            raise HTTPException(
+                status_code=400, detail="Either cover file or cover_url must be provided"
+            )
 
         # Fetch the card
         card: Card | None = await yoto_client.get_card(playlist_id)
@@ -1266,7 +1361,7 @@ async def update_playlist_cover(
             raise HTTPException(status_code=404, detail="Playlist not found")
 
         cover_content = None
-        
+
         # Handle file upload
         if cover:
             cover_content = await cover.read()
@@ -1281,7 +1376,9 @@ async def update_playlist_cover(
                 logger.info(f"Downloaded cover image from URL: {cover_url}")
             except httpx.HTTPError as e:
                 logger.error(f"Failed to download cover from URL {cover_url}: {e}")
-                raise HTTPException(status_code=400, detail=f"Failed to download image from URL: {str(e)}")
+                raise HTTPException(
+                    status_code=400, detail=f"Failed to download image from URL: {str(e)}"
+                )
 
         # Upload cover image
         response = await yoto_client.upload_cover_image(

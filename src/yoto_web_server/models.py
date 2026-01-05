@@ -18,6 +18,8 @@ class FileUploadStatus(str, Enum):
     """Upload job status."""
 
     PENDING = "pending"
+    UPLOADING_LOCAL = "uploading_local"  # Uploading file from client to server
+    DOWNLOADING_YOUTUBE = "downloading_youtube"  # Downloading from YouTube
     QUEUED = "queued"
     UPLOADING = "uploading"
     PROCESSING = "processing"

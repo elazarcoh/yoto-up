@@ -67,7 +67,7 @@ class Track(BaseModel):
     overlay_label: str | None = Field(default=None, alias="overlayLabel")
     duration: float | None = None
     file_size: float | None = Field(default=None, alias="fileSize")
-    channels: Literal["stereo", "mono", 1, 2] | None = None
+    channels: Literal["stereo", "mono", 1, 2, ""] | None = None
     ambient: Ambient | None = None
     has_streams: bool | None = Field(default=None, alias="hasStreams")
 

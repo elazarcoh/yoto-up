@@ -1,4 +1,4 @@
-"""Service for YouTube metadata handling (with mocking)."""
+"""Service for YouTube metadata handling using yt-dlp."""
 
 import asyncio
 import json
@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,7 +32,6 @@ class YouTubeMetadata:
     upload_date: str
     description: str
     thumbnail_url: str
-    mock_audio_path: str | None = None  # Path to mock audio file for testing
 
 
 @dataclass
@@ -46,47 +46,22 @@ class MetadataTask:
 
 
 class YouTubeMetadataService:
-    """Service for fetching and processing YouTube metadata.
+    """Service for fetching and processing YouTube metadata using yt-dlp.
 
-    Currently mocks data. In production, would use yt-dlp to fetch real metadata.
+    Includes in-memory caching with TTL to avoid redundant metadata fetches.
     """
 
-    # Mock data for testing
-    MOCK_VIDEOS = {
-        "dQw4w9WgXcQ": YouTubeMetadata(
-            video_id="dQw4w9WgXcQ",
-            title="Never Gonna Give You Up",
-            duration_seconds=213,
-            uploader="Rick Astley",
-            upload_date="2009-10-25",
-            description="The official Rick Roll video",
-            thumbnail_url="https://i.ytimg.com/vi/dQw4w9WgXcQ/maxresdefault.jpg",
-            mock_audio_path="/static/mock-audio/rick-astley-never-gonna.mp3",
-        ),
-        "9bZkp7q19f0": YouTubeMetadata(
-            video_id="9bZkp7q19f0",
-            title="PSY - GANGNAM STYLE",
-            duration_seconds=253,
-            uploader="officialpsy",
-            upload_date="2012-07-15",
-            description="PSY - GANGNAM STYLE(강남스타일) MV",
-            thumbnail_url="https://i.ytimg.com/vi/9bZkp7q19f0/maxresdefault.jpg",
-            mock_audio_path="/static/mock-audio/psy-gangnam.mp3",
-        ),
-        "jNQXAC9IVRw": YouTubeMetadata(
-            video_id="jNQXAC9IVRw",
-            title="Me at the zoo",
-            duration_seconds=18,
-            uploader="jawed",
-            upload_date="2005-04-23",
-            description="The first YouTube video ever uploaded",
-            thumbnail_url="https://i.ytimg.com/vi/jNQXAC9IVRw/maxresdefault.jpg",
-            mock_audio_path="/static/mock-audio/first-youtube-video.mp3",
-        ),
-    }
+    # Metadata cache: {video_id: (metadata, timestamp)}
+    # TTL is 1 hour (3600 seconds)
+    _metadata_cache: ClassVar[dict[str, tuple[YouTubeMetadata, float]]] = {}
+    _cache_ttl: ClassVar[int] = 3600  # 1 hour in seconds
+    _cache_lock: ClassVar[threading.Lock] = threading.Lock()
 
     async def get_metadata(self, youtube_url: str) -> YouTubeMetadata | None:
-        """Fetch metadata for a YouTube URL using yt-dlp.
+        """Fetch metadata for a YouTube URL using yt-dlp with caching.
+
+        Caches results in-memory for 1 hour to avoid redundant metadata fetches
+        during the same session.
 
         Args:
             youtube_url: YouTube URL or video ID.
@@ -102,7 +77,19 @@ class YouTubeMetadataService:
             logger.warning(f"Could not extract video ID from: {youtube_url}")
             return None
 
-        # Try to fetch real metadata using yt-dlp
+        # Check cache first (thread-safe with lock)
+        with self._cache_lock:
+            if video_id in self._metadata_cache:
+                metadata, timestamp = self._metadata_cache[video_id]
+                age = time.time() - timestamp
+                if age < self._cache_ttl:
+                    logger.info(f"Cache hit for: {video_id} (age: {age:.1f}s)")
+                    return metadata
+                else:
+                    logger.info(f"Cache expired for: {video_id} (age: {age:.1f}s)")
+                    del self._metadata_cache[video_id]
+
+        # Fetch real metadata using yt-dlp
         try:
             # Run yt-dlp in async context
             loop = asyncio.get_event_loop()
@@ -113,26 +100,16 @@ class YouTubeMetadataService:
             )
             if metadata:
                 logger.info(f"Fetched real metadata for: {video_id}")
+                # Cache the result
+                with self._cache_lock:
+                    self._metadata_cache[video_id] = (metadata, time.time())
                 return metadata
+            else:
+                logger.warning(f"Failed to fetch metadata for: {video_id}")
+                return None
         except Exception as e:
-            logger.warning(f"Failed to fetch metadata with yt-dlp: {e}")
-
-        # Fall back to mock data if available
-        if video_id in self.MOCK_VIDEOS:
-            logger.info(f"Falling back to mock metadata for: {video_id}")
-            return self.MOCK_VIDEOS[video_id]
-
-        # Generate mock metadata as last resort
-        logger.warning(f"Generating mock metadata for: {video_id}")
-        return YouTubeMetadata(
-            video_id=video_id,
-            title=f"Sample Video - {video_id[:8]}",
-            duration_seconds=180,
-            uploader="Sample Creator",
-            upload_date=datetime.now().strftime("%Y-%m-%d"),
-            description="This is a mock YouTube video for testing purposes.",
-            thumbnail_url=f"https://i.ytimg.com/vi/{video_id}/maxresdefault.jpg",
-        )
+            logger.error(f"Failed to fetch metadata with yt-dlp for {video_id}: {e}")
+            return None
 
     @staticmethod
     def _extract_video_id(youtube_url: str) -> str | None:
