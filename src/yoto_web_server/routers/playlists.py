@@ -1245,27 +1245,50 @@ async def update_playlist_cover(
     request: Request,
     playlist_id: Annotated[str, Path()],
     yoto_client: YotoApiDep,
-    cover: Annotated[UploadFile, File(description="Cover image file")],
+    cover: Annotated[UploadFile | None, File(description="Cover image file")] = None,
+    cover_url: Annotated[str | None, Form()] = None,
 ) -> str:
     """
     Update playlist cover image.
+    
+    Supports two methods:
+    1. File upload: provide 'cover' file field
+    2. URL: provide 'cover_url' form field - the URL will be downloaded and uploaded as a file
     """
     try:
+        # Validate that at least one input is provided
+        if not cover and not cover_url:
+            raise HTTPException(status_code=400, detail="Either cover file or cover_url must be provided")
+
         # Fetch the card
         card: Card | None = await yoto_client.get_card(playlist_id)
         if not card:
             raise HTTPException(status_code=404, detail="Playlist not found")
 
-        # Upload cover image
-        cover_content = await cover.read()
+        cover_content = None
+        
+        # Handle file upload
+        if cover:
+            cover_content = await cover.read()
+        # Handle URL download
+        elif cover_url:
+            try:
+                # Download the image from URL
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(cover_url)
+                    response.raise_for_status()
+                    cover_content = response.content
+                logger.info(f"Downloaded cover image from URL: {cover_url}")
+            except httpx.HTTPError as e:
+                logger.error(f"Failed to download cover from URL {cover_url}: {e}")
+                raise HTTPException(status_code=400, detail=f"Failed to download image from URL: {str(e)}")
 
+        # Upload cover image
         response = await yoto_client.upload_cover_image(
             image_data=cover_content,
         )
 
         # Update card metadata with new cover URL
-        from yoto_web_server.api.models import CardCover, CardMetadata
-
         if not card.metadata:
             card.metadata = CardMetadata()
 
@@ -1283,6 +1306,8 @@ async def update_playlist_cover(
         # Return updated detail view
         return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update playlist cover: {e}")
         raise HTTPException(status_code=500, detail=str(e))

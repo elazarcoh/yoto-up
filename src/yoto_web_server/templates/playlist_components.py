@@ -214,18 +214,35 @@ class CoverModalPartial(Component):
                     hx_swap="outerHTML",
                     hx_indicator="#cover-loading",
                     classes="p-6 space-y-4",
-                    **{
-                        "hx-on::after-request": "if(event.detail.successful) document.getElementById('cover-modal').remove()"
-                    },
+                    hx_on__after_request="if(event.detail.successful) document.getElementById('cover-modal').remove()",
                 )(
+                    # File upload section
                     d.Div(classes="space-y-2")(
-                        d.Label(classes="block text-sm font-medium text-gray-700")("Upload Image"),
+                        d.Label(classes="block text-sm font-medium text-gray-700")("Upload File"),
                         d.Input(
                             type="file",
                             name="cover",
                             accept="image/*",
                             classes="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100",
-                            required=True,
+                        ),
+                    ),
+                    # Divider
+                    d.Div(classes="flex items-center gap-3 my-4")(
+                        d.Div(classes="flex-1 border-t border-gray-300")(),
+                        d.Span(classes="text-xs font-medium text-gray-500")("OR"),
+                        d.Div(classes="flex-1 border-t border-gray-300")(),
+                    ),
+                    # URL input section
+                    d.Div(classes="space-y-2")(
+                        d.Label(classes="block text-sm font-medium text-gray-700")("Image URL"),
+                        d.Input(
+                            type="url",
+                            name="cover_url",
+                            placeholder="https://example.com/image.jpg",
+                            classes="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm",
+                        ),
+                        d.P(classes="text-xs text-gray-500 mt-1")(
+                            "Enter a public image URL. It will be downloaded and uploaded."
                         ),
                     ),
                     d.Div(classes="flex justify-between items-center mt-6")(
@@ -237,9 +254,7 @@ class CoverModalPartial(Component):
                             hx_swap="outerHTML",
                             hx_indicator="#cover-loading",
                             hx_confirm="Are you sure you want to remove the cover image?",
-                            **{
-                                "hx-on::after-request": "if(event.detail.successful) document.getElementById('cover-modal').remove()"
-                            },
+                            hx_on__after_request="if(event.detail.successful) document.getElementById('cover-modal').remove()",
                         )("Remove Cover"),
                         d.Div(classes="flex gap-3")(
                             d.Button(
