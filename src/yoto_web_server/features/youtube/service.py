@@ -1,8 +1,10 @@
 """Service for YouTube metadata handling (with mocking)."""
 
 import asyncio
+import json
 import shutil
 import subprocess
+import tempfile
 import threading
 import uuid
 from dataclasses import dataclass
@@ -84,7 +86,7 @@ class YouTubeMetadataService:
     }
 
     async def get_metadata(self, youtube_url: str) -> YouTubeMetadata | None:
-        """Fetch metadata for a YouTube URL.
+        """Fetch metadata for a YouTube URL using yt-dlp.
 
         Args:
             youtube_url: YouTube URL or video ID.
@@ -94,22 +96,34 @@ class YouTubeMetadataService:
         """
         logger.info(f"Fetching metadata for: {youtube_url}")
 
-        # Simulate async work with a small delay
-        await asyncio.sleep(0.5)
-
         # Extract video ID from URL or use as-is
         video_id = self._extract_video_id(youtube_url)
         if not video_id:
             logger.warning(f"Could not extract video ID from: {youtube_url}")
             return None
 
-        # Mock: Check if we have this video in our test data
+        # Try to fetch real metadata using yt-dlp
+        try:
+            # Run yt-dlp in async context
+            loop = asyncio.get_event_loop()
+            metadata = await loop.run_in_executor(
+                None,
+                self._fetch_metadata_with_yt_dlp,
+                youtube_url,
+            )
+            if metadata:
+                logger.info(f"Fetched real metadata for: {video_id}")
+                return metadata
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata with yt-dlp: {e}")
+
+        # Fall back to mock data if available
         if video_id in self.MOCK_VIDEOS:
-            logger.info(f"Found mock metadata for: {video_id}")
+            logger.info(f"Falling back to mock metadata for: {video_id}")
             return self.MOCK_VIDEOS[video_id]
 
-        # Mock: For any other video ID, generate mock metadata
-        logger.info(f"Generating mock metadata for: {video_id}")
+        # Generate mock metadata as last resort
+        logger.warning(f"Generating mock metadata for: {video_id}")
         return YouTubeMetadata(
             video_id=video_id,
             title=f"Sample Video - {video_id[:8]}",
@@ -143,8 +157,7 @@ class YouTubeMetadataService:
                 parts = youtube_url.split("v=")
                 if len(parts) > 1:
                     video_id = parts[1].split("&")[0]
-                    if len(video_id) == 11:
-                        return video_id
+                    return video_id if video_id else None
             except Exception:
                 pass
 
@@ -152,20 +165,17 @@ class YouTubeMetadataService:
             try:
                 # Extract from short URL
                 video_id = youtube_url.split("youtu.be/")[1].split("?")[0]
-                if len(video_id) == 11:
-                    return video_id
+                return video_id if video_id else None
             except Exception:
                 pass
 
         return None
 
     async def download_audio(self, video_id: str, output_dir: Path) -> Path | None:
-        """Download audio for a YouTube video.
-
-        For now, this copies mock audio files. In production, would use yt-dlp.
+        """Download audio for a YouTube video using yt-dlp.
 
         Args:
-            video_id: YouTube video ID
+            video_id: YouTube URL or video ID
             output_dir: Directory to save the audio file
 
         Returns:
@@ -173,36 +183,249 @@ class YouTubeMetadataService:
         """
         logger.info(f"Downloading audio for: {video_id}")
 
-        # Get metadata to find the audio file
-        metadata = await self.get_metadata(video_id)
-        if not metadata:
-            logger.warning(f"Could not find metadata for: {video_id}")
+        # Create output directory
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            # Run yt-dlp in async context
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self._download_audio_with_yt_dlp,
+                video_id,
+                str(output_dir),
+            )
+            if result:
+                logger.info(f"Downloaded audio to: {result}")
+                return Path(result)
+        except Exception as e:
+            logger.error(f"Failed to download audio with yt-dlp: {e}")
+
+        logger.warning(f"Could not download audio for: {video_id}")
+        return None
+
+    @staticmethod
+    def _fetch_metadata_with_yt_dlp(youtube_url: str) -> YouTubeMetadata | None:
+        """Fetch metadata from YouTube using yt-dlp.
+
+        Args:
+            youtube_url: YouTube URL or video ID
+
+        Returns:
+            YouTubeMetadata object with fetched data, or None if failed
+        """
+        try:
+            # Try using yt-dlp library first
+            try:
+                import yt_dlp
+            except ImportError:
+                logger.warning("yt-dlp library not available, trying command-line tool")
+                return YouTubeMetadataService._fetch_metadata_with_yt_dlp_cli(youtube_url)
+
+            # Use yt-dlp to extract metadata
+            ydl_opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "extract_flat": False,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=False)
+
+                return YouTubeMetadata(
+                    video_id=info.get("id", "unknown"),
+                    title=info.get("title", "Unknown Title"),
+                    duration_seconds=info.get("duration", 0),
+                    uploader=info.get("uploader", "Unknown"),
+                    upload_date=info.get("upload_date", "1970-01-01"),
+                    description=info.get("description", ""),
+                    thumbnail_url=info.get("thumbnail", ""),
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata with yt-dlp library: {e}")
             return None
 
-        # If there's a mock audio path, copy it
-        if metadata.mock_audio_path:
-            # In a real deployment, these would be actual files
-            # For testing, we check if they exist and copy them
-            # For now, just create a placeholder or return the path
-            mock_file = Path("src/yoto_web_server") / metadata.mock_audio_path.lstrip("/")
+    @staticmethod
+    def _fetch_metadata_with_yt_dlp_cli(youtube_url: str) -> YouTubeMetadata | None:
+        """Fetch metadata from YouTube using yt-dlp CLI tool.
 
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_file = output_dir / f"{metadata.title.replace(' ', '_')}.mp3"
+        Args:
+            youtube_url: YouTube URL or video ID
 
-            # If mock file exists, copy it; otherwise create a placeholder
-            if mock_file.exists():
-                shutil.copy2(mock_file, output_file)
-                logger.info(f"Copied mock audio to: {output_file}")
-                return output_file
+        Returns:
+            YouTubeMetadata object with fetched data, or None if failed
+        """
+        try:
+            # Use yt-dlp command-line tool
+            cmd = [
+                "yt-dlp",
+                "--dump-json",
+                "--no-warnings",
+                "--quiet",
+                youtube_url,
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+
+            if result.returncode != 0:
+                logger.warning(f"yt-dlp CLI returned error: {result.stderr}")
+                return None
+
+            # Parse JSON output
+            info = json.loads(result.stdout)
+
+            return YouTubeMetadata(
+                video_id=info.get("id", "unknown"),
+                title=info.get("title", "Unknown Title"),
+                duration_seconds=info.get("duration", 0),
+                uploader=info.get("uploader", "Unknown"),
+                upload_date=info.get("upload_date", "1970-01-01"),
+                description=info.get("description", ""),
+                thumbnail_url=info.get("thumbnail", ""),
+            )
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse yt-dlp JSON output: {e}")
+            return None
+        except subprocess.TimeoutExpired:
+            logger.warning("yt-dlp CLI timed out")
+            return None
+        except FileNotFoundError:
+            logger.warning("yt-dlp CLI tool not found in PATH")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to fetch metadata with yt-dlp CLI: {e}")
+            return None
+
+    @staticmethod
+    def _download_audio_with_yt_dlp(
+        youtube_url: str,
+        output_dir: str,
+    ) -> str | None:
+        """Download audio from YouTube using yt-dlp.
+
+        Args:
+            youtube_url: YouTube URL or video ID
+            output_dir: Directory to save the audio file
+
+        Returns:
+            Path to the downloaded audio file, or None if failed
+        """
+        try:
+            # Try using yt-dlp library first
+            try:
+                import yt_dlp
+            except ImportError:
+                logger.warning("yt-dlp library not available, trying command-line tool")
+                return YouTubeMetadataService._download_audio_with_yt_dlp_cli(
+                    youtube_url,
+                    output_dir,
+                )
+
+            output_template = str(Path(output_dir) / "%(title)s.%(ext)s")
+
+            ydl_opts = {
+                "format": "bestaudio/best",
+                "postprocessors": [
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": "mp3",
+                        "preferredquality": "192",
+                    }
+                ],
+                "outtmpl": output_template,
+                "quiet": True,
+                "no_warnings": True,
+            }
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(youtube_url, download=True)
+                filename = ydl.prepare_filename(info)
+                # Replace extension with .mp3
+                audio_file = Path(filename).with_suffix(".mp3")
+
+                if audio_file.exists():
+                    logger.info(f"Successfully downloaded audio to: {audio_file}")
+                    return str(audio_file)
+                else:
+                    logger.warning(f"Audio file not found after download: {audio_file}")
+                    return None
+
+        except Exception as e:
+            logger.warning(f"Failed to download with yt-dlp library: {e}")
+            return None
+
+    @staticmethod
+    def _download_audio_with_yt_dlp_cli(
+        youtube_url: str,
+        output_dir: str,
+    ) -> str | None:
+        """Download audio from YouTube using yt-dlp CLI tool.
+
+        Args:
+            youtube_url: YouTube URL or video ID
+            output_dir: Directory to save the audio file
+
+        Returns:
+            Path to the downloaded audio file, or None if failed
+        """
+        try:
+            output_template = str(Path(output_dir) / "%(title)s.%(ext)s")
+
+            cmd = [
+                "yt-dlp",
+                "-f",
+                "bestaudio/best",
+                "-x",
+                "--audio-format",
+                "mp3",
+                "--audio-quality",
+                "192",
+                "-o",
+                output_template,
+                "--no-warnings",
+                "--quiet",
+                youtube_url,
+            ]
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minutes for download
+            )
+
+            if result.returncode != 0:
+                logger.warning(f"yt-dlp CLI download failed: {result.stderr}")
+                return None
+
+            # Find the downloaded file
+            output_path = Path(output_dir)
+            mp3_files = list(output_path.glob("*.mp3"))
+
+            if mp3_files:
+                latest_file = max(mp3_files, key=lambda p: p.stat().st_mtime)
+                logger.info(f"Successfully downloaded audio to: {latest_file}")
+                return str(latest_file)
             else:
-                # Create a placeholder file with dummy audio data
-                # In production, yt-dlp would download the actual audio
-                output_file.touch()
-                logger.warning(f"Mock audio file not found, creating placeholder: {output_file}")
-                return output_file
+                logger.warning(f"No MP3 files found in {output_dir}")
+                return None
 
-        logger.warning(f"No audio path available for: {video_id}")
-        return None
+        except subprocess.TimeoutExpired:
+            logger.warning("yt-dlp CLI download timed out")
+            return None
+        except FileNotFoundError:
+            logger.warning("yt-dlp CLI tool not found in PATH")
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to download with yt-dlp CLI: {e}")
+            return None
 
     def format_duration(self, seconds: int) -> str:
         """Format duration in seconds to HH:MM:SS."""
@@ -473,8 +696,6 @@ class YouTubeFeature(OptionalFeatureBase):
         Raises:
             FileNotFoundError: If download fails or file cannot be accessed
         """
-        import tempfile
-
         # Create temp directory for this download
         output_dir = Path(tempfile.gettempdir()) / "yoto_youtube_downloads"
         output_dir.mkdir(parents=True, exist_ok=True)

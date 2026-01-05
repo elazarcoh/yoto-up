@@ -49,6 +49,7 @@ class UploadFileStatus(BaseModel):
     temp_path: str | None = None
     uploaded_at: datetime | None = None
     current_step: str | None = None
+    original_title: str | None = None  # For URL uploads, store the original metadata title
 
 
 UploadMode = Literal["chapters", "tracks"]

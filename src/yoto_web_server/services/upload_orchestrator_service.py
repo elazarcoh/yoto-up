@@ -172,12 +172,14 @@ class UploadOrchestrator:
 
             # Try to get title from metadata provider if available
             filename = f"{scheme}-{url_path}"
+            original_title = None
             if scheme in self._metadata_providers:
                 try:
                     metadata_provider = self._metadata_providers[scheme]
                     title = await metadata_provider.get_url_title(url_path)
                     if title:
                         filename = f"{title}.mp3"
+                        original_title = title  # Store the original title
                         logger.info(f"Fetched title for {scheme}:{url_path} -> {filename}")
                 except Exception as e:
                     logger.warning(f"Failed to fetch metadata for {scheme}:{url_path}: {e}")
@@ -187,6 +189,7 @@ class UploadOrchestrator:
                 session_id=session_id,
                 filename=filename,
                 size_bytes=0,  # Size unknown until downloaded
+                original_title=original_title,  # Pass the original title from metadata
             )
 
             if not file_status:

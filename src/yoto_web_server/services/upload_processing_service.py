@@ -482,7 +482,12 @@ class UploadProcessingService:
 
             transcoded_info = transcoded.transcode.transcoded_info
 
-            title = Path(file_status.filename).stem
+            # Use original title if available (from URL metadata), otherwise extract from filename
+            if file_status.original_title:
+                title = file_status.original_title
+            else:
+                title = Path(file_status.filename).stem
+            
             track = Track(
                 title=title,
                 key="0",  # Will be set later

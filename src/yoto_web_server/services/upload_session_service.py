@@ -87,6 +87,7 @@ class UploadSessionService:
         session_id: str,
         filename: str,
         size_bytes: int,
+        original_title: str | None = None,
     ) -> UploadFileStatus | None:
         """
         Register a file in an upload session.
@@ -95,6 +96,7 @@ class UploadSessionService:
             session_id: ID of the upload session
             filename: Name of the file
             size_bytes: Size of the file in bytes
+            original_title: Original title from metadata provider (for URL uploads)
 
         Returns:
             UploadFileStatus with generated file_id, or None if session not found
@@ -111,6 +113,7 @@ class UploadSessionService:
             filename=filename,
             size_bytes=size_bytes,
             status=FileUploadStatus.PENDING,
+            original_title=original_title,
         )
 
         session.files.append(file_status)
