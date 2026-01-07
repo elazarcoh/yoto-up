@@ -69,3 +69,9 @@ This is a standalone FastAPI web server for managing Yoto cards and playlists.
 3.  **Logging:** Use `loguru` (`from loguru import logger`).
 4.  **Error Handling:** Use `FastAPI.HTTPException` in routers; custom exceptions in services.
 5.  **Path Handling:** Use `pathlib.Path` for all file operations.
+6.  **Browser Verification (MCP):** Use the `playwright` MCP to verify implementations across all relevant flows.
+7.  **Authentication During Browser Verification:** If authentication is required, you should try to authenticate (click on the relevant UI element). It is expected that the browser will automate the login process, so copilot should just click on any element that relates to authentication (e.g. "Start Authentication").
+
+## Important development practices
+
+* Always test the changes using the playwright mcp tool. 
