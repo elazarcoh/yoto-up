@@ -155,14 +155,20 @@ class PlaylistDetail(Component):
                 hx_target="#edit-controls-container",
                 hx_swap="innerHTML",
             )("✏️ Edit"),
-            # Upload button - loads upload modal via HTMX
+            # Quick upload button - loads upload modal via HTMX
             d.Button(
                 classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",
                 hx_get=f"/playlists/{self.card.card_id}/upload-modal",
                 hx_target="#upload-modal-container",
                 hx_swap="innerHTML",
                 hx_on__after_request="document.getElementById('upload-modal-container').classList.remove('hidden')",
-            )("⬆️ Upload Items"),
+            )("⬆️ Quick Upload"),
+            # Advanced upload button - creates session and redirects
+            d.Button(
+                classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",
+                hx_post=f"/playlists/{self.card.card_id}/advanced-upload-session",
+                hx_on__after_request="const response = event.detail.xhr.response; const data = JSON.parse(response); window.location.href = data.redirect;",
+            )("⬆️ Advanced Upload"),
             # Change cover - would load cover selection modal
             d.Button(
                 classes="inline-flex items-center justify-center px-6 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-colors",

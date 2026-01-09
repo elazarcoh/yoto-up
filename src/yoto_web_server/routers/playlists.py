@@ -24,6 +24,7 @@ from loguru import logger
 from pydom import Renderable
 from pydom import html as d
 
+from yoto_web_server.api.exceptions import YotoAuthError
 from yoto_web_server.api.models import (
     Card,
     CardCover,
@@ -202,7 +203,7 @@ async def get_playlist_detail(
                 request=request,
             )
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to get playlist {playlist_id}: {e}")
@@ -232,7 +233,7 @@ async def get_playlist_json(
 
         return card_data
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to get playlist JSON {playlist_id}: {e}")
@@ -460,7 +461,7 @@ async def reorder_chapters(
 
         return ReorderChaptersResponse(status="reordered", playlist_id=playlist_id)
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to reorder chapters: {e}")
@@ -539,7 +540,7 @@ async def delete_selected_chapters(
         )
 
         return render_partial(chapters_ul)
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to delete chapters: {e}")
@@ -591,7 +592,7 @@ async def change_cover(
         # Return updated detail
         return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to change cover: {e}")
@@ -674,12 +675,11 @@ async def create_upload_session(
             session=session,
         )
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to create upload session for {playlist_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.post(
@@ -743,7 +743,7 @@ async def register_file_only(
             session=updated_session,
         )
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to register file in session {session_id}: {e}")
@@ -831,7 +831,7 @@ async def upload_file_content(
             session=updated_session,
         )
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to upload file content to session {session_id}: {e}")
@@ -901,7 +901,7 @@ async def register_url_only(
             "session": updated_session.model_dump() if updated_session else None,
         }
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to register URL in session {session_id}: {e}")
@@ -983,17 +983,11 @@ async def download_url_content(
             "session": updated_session.model_dump() if updated_session else None,
         }
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to start URL download in session {session_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-
-
-
-
 
 
 @router.post("/{playlist_id}/upload-session/{session_id}/finalize", response_class=JSONResponse)
@@ -1063,7 +1057,7 @@ async def finalize_upload_session(
             "session_id": session_id,
         }
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to finalize upload session {session_id}: {e}")
@@ -1107,7 +1101,7 @@ async def get_upload_session_status(
             session=session,
         )
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to get upload session status: {e}")
@@ -1146,7 +1140,7 @@ async def get_playlist_upload_sessions(
         )
         return render_partial(component)
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to get playlist upload sessions: {e}")
@@ -1196,7 +1190,7 @@ async def delete_upload_session(
         sessions = upload_session_service.get_playlist_sessions(playlist_id)
         return render_partial(UploadSessionsListPartial(playlist_id=playlist_id, sessions=sessions))
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to delete upload session {session_id}: {e}")
@@ -1249,10 +1243,312 @@ async def stop_upload_session(
         sessions = upload_session_service.get_playlist_sessions(playlist_id)
         return render_partial(UploadSessionsListPartial(playlist_id=playlist_id, sessions=sessions))
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to stop upload session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/advanced-upload-session", response_class=JSONResponse)
+async def create_advanced_upload_session(
+    playlist_id: Annotated[str, Path()],
+    request: Request,
+    container: ContainerDep,
+    yoto_client: YotoApiDep,
+) -> dict[str, str]:
+    """
+    Create a new advanced upload session and return redirect URL.
+
+    Args:
+        playlist_id: ID of the playlist to upload to
+
+    Returns:
+        JSON with redirect URL to the session page
+    """
+    try:
+        # Verify the playlist exists
+        card = await yoto_client.get_card(playlist_id)
+        if not card:
+            raise HTTPException(status_code=404, detail="Playlist not found")
+
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get user ID from session or use default
+        user_id = request.cookies.get("user_id", "unknown")
+        user_session_id = getattr(request.state, "session_id", None)
+
+        # Create session with default settings for advanced upload
+        upload_request = UploadSessionInitRequest(
+            upload_mode="chapters",
+            normalize=False,
+            target_lufs=-23.0,
+            normalize_batch=False,
+            analyze_intro_outro=False,
+            segment_seconds=10.0,
+            similarity_threshold=0.75,
+            show_waveform=False,
+            advanced_mode=True,  # Advanced mode delays Yoto upload until Finish & Process
+        )
+
+        session = upload_session_service.create_session(
+            playlist_id=playlist_id,
+            user_id=user_id,
+            user_session_id=user_session_id,
+            request=upload_request,
+        )
+
+        logger.info(
+            f"Created advanced upload session {session.session_id} for playlist {playlist_id}"
+        )
+
+        return {"redirect": f"/playlists/{playlist_id}/upload-session/{session.session_id}"}
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create advanced upload session for {playlist_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{playlist_id}/upload-session/{session_id}", response_class=HTMLResponse)
+async def get_advanced_upload_session_page(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    request: Request,
+    container: ContainerDep,
+    yoto_client: YotoApiDep,
+) -> str:
+    """
+    Get the advanced upload session page.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+
+    Returns:
+        HTML page for the upload session
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get session
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Import here to avoid circular imports
+        from yoto_web_server.templates.advanced_upload_session import AdvancedUploadSessionPage
+
+        return render_page(
+            title="Advanced Upload - Yoto Web Server",
+            content=AdvancedUploadSessionPage(session=session, playlist_id=playlist_id),
+            request=request,
+        )
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get advanced upload session page: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{playlist_id}/upload-session/{session_id}/file/{file_id}/edit", response_class=HTMLResponse
+)
+async def get_file_edit_panel(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    file_id: Annotated[str, Path()],
+    container: ContainerDep,
+) -> str:
+    """
+    Get the file editor panel for editing file metadata.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        file_id: ID of the file to edit
+
+    Returns:
+        HTML partial for the file editor
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get session
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Import here to avoid circular imports
+        from yoto_web_server.templates.session_edit_components import SessionFileEditorPartial
+
+        return render_partial(SessionFileEditorPartial(session=session, file_id=file_id))
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get file editor panel: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/{playlist_id}/upload-session/{session_id}/file/{file_id}/update", response_class=HTMLResponse
+)
+async def update_file_metadata(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    file_id: Annotated[str, Path()],
+    container: ContainerDep,
+    title: Annotated[str, Form(description="Title for the file")],
+) -> str:
+    """
+    Update file metadata (title).
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+        file_id: ID of the file to update
+        title: New title for the file
+
+    Returns:
+        HTML partial with updated file editor
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get session
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Update file title
+        upload_session_service.update_file_title(session_id, file_id, title)
+
+        logger.info(f"Updated file {file_id} title to '{title}' in session {session_id}")
+
+        # Get updated session and render editor
+        updated_session = upload_session_service.get_session(session_id)
+
+        # Import here to avoid circular imports
+        from yoto_web_server.templates.session_edit_components import SessionFileEditorPartial
+
+        return render_partial(SessionFileEditorPartial(session=updated_session, file_id=file_id))
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update file metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/upload-session/{session_id}/cancel", response_class=JSONResponse)
+async def cancel_advanced_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    container: ContainerDep,
+) -> dict[str, str]:
+    """
+    Cancel an advanced upload session.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+
+    Returns:
+        JSON with redirect URL back to playlist
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get session
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        # Delete session
+        upload_session_service.delete_session(session_id)
+
+        logger.info(f"Cancelled advanced upload session {session_id}")
+
+        return {"redirect": f"/playlists/{playlist_id}"}
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cancel advanced upload session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{playlist_id}/upload-session/{session_id}/finish", response_class=JSONResponse)
+async def finish_advanced_session(
+    playlist_id: Annotated[str, Path()],
+    session_id: Annotated[str, Path()],
+    container: ContainerDep,
+) -> dict[str, str]:
+    """
+    Finish an advanced upload session and start processing.
+
+    Args:
+        playlist_id: ID of the playlist
+        session_id: ID of the upload session
+
+    Returns:
+        JSON with redirect URL back to playlist
+    """
+    try:
+        # Get upload session service
+        upload_session_service = container.upload_session_service()
+
+        # Get session
+        session = upload_session_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Upload session not found")
+
+        if session.playlist_id != playlist_id:
+            raise HTTPException(status_code=403, detail="Session playlist mismatch")
+
+        if not session.files:
+            raise HTTPException(status_code=400, detail="No files in session")
+
+        # Add all uploaded files to processing queue for advanced mode sessions
+        for file in session.files:
+            if file.status == FileUploadStatus.UPLOADED and file.file_id not in session.files_to_process:
+                session.files_to_process.append(file.file_id)
+
+        # Mark session as done and trigger processing
+        upload_session_service.mark_session_done(session_id)
+
+        # Get upload processing service to start processing
+        upload_processing_service = container.upload_processing_service()
+        upload_processing_service.process_session_async(session_id, playlist_id)
+
+        logger.info(f"Finished advanced upload session {session_id} - processing started")
+
+        return {"redirect": f"/playlists/{playlist_id}"}
+
+    except (HTTPException, YotoAuthError):
+        raise
+    except Exception as e:
+        logger.error(f"Failed to finish advanced upload session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1317,7 +1613,7 @@ async def get_json_modal(
         json_string = json.dumps(card_data, indent=2)
 
         return render_partial(JsonDisplayModalPartial(json_data=json_string))
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to get JSON modal: {e}")
@@ -1403,7 +1699,7 @@ async def update_playlist_cover(
         # Return updated detail view
         return render_partial(PlaylistDetail(card=card, playlist_id=playlist_id))
 
-    except HTTPException:
+    except (HTTPException, YotoAuthError):
         raise
     except Exception as e:
         logger.error(f"Failed to update playlist cover: {e}")

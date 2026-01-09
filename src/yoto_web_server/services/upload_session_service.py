@@ -436,3 +436,26 @@ class UploadSessionService:
                 return True
 
         return False
+
+    def update_file_title(self, session_id: str, file_id: str, title: str) -> bool:
+        """
+        Update the custom title for a file in an upload session.
+
+        Args:
+            session_id: ID of the upload session
+            file_id: ID of the file to update
+            title: New title for the file
+
+        Returns:
+            True if updated, False if not found
+        """
+        if session_id not in self._sessions:
+            return False
+
+        session = self._sessions[session_id]
+        for file_status in session.files:
+            if file_status.file_id == file_id:
+                file_status.custom_title = title
+                return True
+
+        return False

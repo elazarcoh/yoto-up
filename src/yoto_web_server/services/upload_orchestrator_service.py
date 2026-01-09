@@ -304,8 +304,9 @@ class UploadOrchestrator:
             )
 
             # Trigger processing if batch normalization not enabled
+            # In advanced mode, skip automatic processing - it happens on Finish & Process
             session = self._upload_session_service.get_session(session_id)
-            if session and not session.normalize_batch:
+            if session and not session.normalize_batch and not session.advanced_mode:
                 session.files_to_process.append(file_id)
                 self._upload_processing_service.process_session_async(
                     session_id=session_id,
@@ -514,8 +515,9 @@ class UploadOrchestrator:
             )
 
             # Trigger processing if batch normalization not enabled
+            # In advanced mode, skip automatic processing - it happens on Finish & Process
             session = self._upload_session_service.get_session(session_id)
-            if session and not session.normalize_batch:
+            if session and not session.normalize_batch and not session.advanced_mode:
                 session.files_to_process.append(file_id)
                 self._upload_processing_service.process_session_async(
                     session_id=session_id,
@@ -635,8 +637,9 @@ class UploadOrchestrator:
             )
 
             # Trigger processing if batch normalization not enabled
+            # In advanced mode, skip automatic processing - it happens on Finish & Process
             session = self._upload_session_service.get_session(session_id)
-            if session and not session.normalize_batch:
+            if session and not session.normalize_batch and not session.advanced_mode:
                 session.files_to_process.append(file_id)
                 self._upload_processing_service.process_session_async(
                     session_id=session_id,

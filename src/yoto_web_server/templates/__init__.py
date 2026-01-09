@@ -2,6 +2,7 @@
 Templates package - PyDOM components for rendering HTML.
 """
 
+from yoto_web_server.templates.advanced_upload_session import AdvancedUploadSessionPage
 from yoto_web_server.templates.alarms import AlarmCard, AlarmsSection
 from yoto_web_server.templates.auth import AuthPage, AuthStatusPartial, DeviceCodeInstructions
 from yoto_web_server.templates.base import BaseLayout, Navigation, render_page, render_partial
@@ -59,6 +60,10 @@ from yoto_web_server.templates.playlists import (
     PlaylistDetailPartial,
     PlaylistListPartial,
     PlaylistsPage,
+)
+from yoto_web_server.templates.session_edit_components import (
+    SessionFileEditorPartial,
+    SessionFileListPartial,
 )
 from yoto_web_server.templates.upload_components import (
     ActiveUploadsSection,
@@ -130,6 +135,10 @@ __all__ = [
     # Playlist Detail Refactored
     "EditControlsPartial",
     "PlaylistDetail",
+    # Advanced Upload
+    "AdvancedUploadSessionPage",
+    "SessionFileListPartial",
+    "SessionFileEditorPartial",
     # Upload Components
     "ActiveUploadsSection",
     "JsonDisplayModalPartial",

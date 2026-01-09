@@ -52,6 +52,7 @@ class UploadFileStatus(BaseModel):
     uploaded_at: datetime | None = None
     current_step: str | None = None
     original_title: str | None = None  # For URL uploads, store the original metadata title
+    custom_title: str | None = None  # User-edited title for the file
 
 
 UploadMode = Literal["chapters", "tracks"]
@@ -77,6 +78,7 @@ class UploadSession(BaseModel):
     segment_seconds: float = 10.0
     similarity_threshold: float = 0.75
     show_waveform: bool = False
+    advanced_mode: bool = False  # In advanced mode, don't upload to Yoto until Finish is clicked
 
     # Session status
     files: list[UploadFileStatus] = Field(default_factory=list)
@@ -136,6 +138,7 @@ class UploadSessionInitRequest(BaseModel):
     segment_seconds: float = 10.0
     similarity_threshold: float = 0.75
     show_waveform: bool = False
+    advanced_mode: bool = False
 
 
 class UploadSessionResponse(BaseModel):
